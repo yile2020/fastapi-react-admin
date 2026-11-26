@@ -7,12 +7,14 @@ import { Pressable, RefreshControl, ScrollView, View } from 'react-native'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Chevron, Group, HeaderAction } from '@/components/grouped'
 import { AttachmentCount } from '@/components/notice'
 import { Icon } from '@/components/ui/icon'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Text } from '@/components/ui/text'
+import { toast } from '@/components/ui/toast'
 import { api } from '@/lib/api'
 import { NOTIFICATION_CATEGORY, type Notification } from '@/lib/contract'
 import { relativeTime } from '@/lib/datetime'
@@ -33,6 +35,8 @@ export default function NotificationsScreen() {
   const router = useRouter()
   const { refresh: refreshUnread, unread, known: unreadKnown } = useUnread()
   const [filter, setFilter] = React.useState<Filter>('all')
+  /** 长按要删的那一条（#449）。只有发给我本人的（`deletable`）长按才有反应 */
+  const [deleting, setDeleting] = React.useState<Notification | null>(null)
 
   /**
    * 🔴 **筛选条件进 query key，竞态就从结构上消失了。**
@@ -122,6 +126,23 @@ export default function NotificationsScreen() {
     },
   })
 
+  /*
+   * 删除（#449）：只有发给我本人的能删，公告和全员广播是全员共用的一行、后端不让删。
+   * 🔴 写失败走 `toast.error`（components 分册那张表）：确认框关掉之后屏上没有位置可占，那条还在列表里就是对的
+   */
+  const del = useMutation({
+    mutationFn: (n: Notification) =>
+      api.DELETE('/api/v1/sys/notifications/{pk}', { params: { path: { pk: n.id } } }),
+    onError: (e) => toast.error(t('删除失败'), { description: e instanceof Error ? e.message : String(e) }),
+    onSettled: async () => {
+      setDeleting(null)
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['notifications'] }),
+        qc.invalidateQueries({ queryKey: noticesKey.feeds }),
+      ])
+    },
+  })
+
   const total = unread?.total ?? 0
   /*
    * 「全部已读」标得掉的条数：必须确认的公告（#190）后端会跳过，只能在详情屏点「我已阅读」。
@@ -200,16 +221,51 @@ export default function NotificationsScreen() {
         ) : (
           <Group className="mx-0">
             {items.map((n, i) => (
-              <NotifRow key={n.id} n={n} first={i === 0} onPress={() => onPressRow(n)} />
+              <NotifRow
+                key={n.id}
+                n={n}
+                first={i === 0}
+                onPress={() => onPressRow(n)}
+                onLongPress={n.deletable ? () => setDeleting(n) : undefined}
+              />
             ))}
           </Group>
         )}
+        {/* 长按没有视觉入口，不说就只有作者知道。只在这一屏真有能删的行时说 */}
+        {items?.some((n) => n.deletable) ? (
+          <Text className="text-muted-foreground text-center text-xs">{t('长按发给你个人的通知可以删除')}</Text>
+        ) : null}
       </ScrollView>
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(o) => {
+          if (!o) setDeleting(null)
+        }}
+        title={t('删除通知')}
+        description={deleting ? t('确定删除「{{title}}」吗？此操作不可撤销。', { title: deleting.title }) : undefined}
+        confirmLabel={t('删除')}
+        cancelLabel={t('取消')}
+        busy={del.isPending}
+        onConfirm={() => deleting && del.mutate(deleting)}
+        testID="notification-delete-confirm"
+      />
     </View>
   )
 }
 
-function NotifRow({ n, first, onPress }: { n: Notification; first?: boolean; onPress: () => void }) {
+function NotifRow({
+  n,
+  first,
+  onPress,
+  onLongPress,
+}: {
+  n: Notification
+  first?: boolean
+  onPress: () => void
+  /** 只有能删的行才传（#449）；不传 = 长按没反应，公告不会弹一个注定失败的确认框 */
+  onLongPress?: () => void
+}) {
   const { t } = useTranslation()
   const unread = !n.read_time
   // 公告来的那一行能点进详情 —— 给一枚 chevron，否则它和「只标已读」的行长得一样，没人知道能点进去
@@ -219,6 +275,7 @@ function NotifRow({ n, first, onPress }: { n: Notification; first?: boolean; onP
       {first ? null : <View className="bg-border ml-5 h-px" />}
       <Pressable
         onPress={onPress}
+        onLongPress={onLongPress}
         testID={opensNotice ? 'notification-row-notice' : 'notification-row'}
         className="active:bg-muted flex-row items-center gap-2 px-5 py-3.5"
       >

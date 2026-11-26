@@ -10,6 +10,7 @@ from backend.common.security.rbac import DependsRBAC
 from backend.database.db import CurrentSession, CurrentSessionTransaction
 from backend.plugin.notification.audience import viewer_of
 from backend.plugin.notification.schema.notification import (
+    DeleteNotificationParam,
     GetNotificationDetail,
     GetNotificationUnreadDetail,
     SendNotificationParam,
@@ -43,9 +44,12 @@ async def get_my_notifications_paginated(
     title: Annotated[str | None, Query(description='标题')] = None,
     category: Annotated[int | None, Query(description='分类（0：系统、1：公告、2：任务事件、3：审批）')] = None,
     unread: Annotated[bool | None, Query(description='只看未读 / 只看已读，不传则不筛')] = None,
+    # 消息中心拿 `mine=true&unread=false` 的 total 当「清空已读」能删几条（#451）。
+    # 🔴 不放进 `/unread-count`：铃铛每次收件箱变动都重拉它，那里只许一条统计查询（`test_unread_count_is_one_scan`）
+    mine: Annotated[bool | None, Query(description='只看点名发给我本人的（能删除的），不传则不筛')] = None,
 ) -> ResponseSchemaModel[PageData[GetNotificationDetail]]:
     page_data = await notification_service.get_list(
-        db=db, viewer=await viewer_of(db, request.user), title=title, category=category, unread=unread
+        db=db, viewer=await viewer_of(db, request.user), title=title, category=category, unread=unread, mine=bool(mine)
     )
     return response_base.success(data=page_data)
 
@@ -75,6 +79,35 @@ async def mark_read(
     # 会被报成「操作失败」，而它本来就该什么都不做（AGENTS.md 里
     # 「update 返回的是写了几行，不是成败」同一个坑）
     await notification_service.mark_read(db=db, viewer=await viewer_of(db, request.user), pk=pk)
+    return response_base.success()
+
+
+# 🔴 删除只删「点名发给我本人」的通知（#449）。公告和全员广播是全员共用的一行，不在可删范围内。
+# 三条的声明顺序同 `read-all`：`/read` 必须排在 `/{pk}` 前面
+
+
+@router.delete('/read', summary='清空我的已读通知', dependencies=[DependsJwtAuth])
+async def delete_my_read_notifications(request: Request, db: CurrentSessionTransaction) -> ResponseSchemaModel[int]:
+    count = await notification_service.delete_read(db=db, viewer=await viewer_of(db, request.user))
+    return response_base.success(data=count)
+
+
+@router.delete('', summary='批量删除我的通知', dependencies=[DependsJwtAuth])
+async def delete_my_notifications(
+    request: Request, db: CurrentSessionTransaction, obj: DeleteNotificationParam
+) -> ResponseSchemaModel[int]:
+    # 返回实际删掉的条数：不是发给我本人的会被跳过，前端拿它提示「删除了 n 条」
+    count = await notification_service.delete_many(db=db, viewer=await viewer_of(db, request.user), pks=obj.pks)
+    return response_base.success(data=count)
+
+
+@router.delete('/{pk}', summary='删除我的通知', dependencies=[DependsJwtAuth])
+async def delete_my_notification(
+    request: Request,
+    db: CurrentSessionTransaction,
+    pk: Annotated[int, Path(description='通知 ID')],
+) -> ResponseModel:
+    await notification_service.delete(db=db, viewer=await viewer_of(db, request.user), pk=pk)
     return response_base.success()
 
 

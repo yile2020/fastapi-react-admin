@@ -115,7 +115,7 @@ class CRUDNotification(DataScopedCRUD[Notification]):
         )
 
     async def get_select(
-        self, viewer: Viewer, title: str | None, category: int | None, *, unread: bool | None
+        self, viewer: Viewer, title: str | None, category: int | None, *, unread: bool | None, mine: bool = False
     ) -> Select:
         """
         获取「我的通知」列表查询表达式
@@ -124,9 +124,12 @@ class CRUDNotification(DataScopedCRUD[Notification]):
         :param title: 标题（模糊匹配）
         :param category: 分类
         :param unread: True 只看未读、False 只看已读、None 不筛
+        :param mine: 只看点名发给我本人的（= 能删的，同 `get_own_ids`）
         :return:
         """
         filters: list[ColumnElement[bool]] = [visible_to(viewer)]
+        if mine:
+            filters.append(Notification.recipient_id == viewer.id)
         if unread is True:
             filters.append(_unread(viewer))
         elif unread is False:
@@ -260,6 +263,55 @@ class CRUDNotification(DataScopedCRUD[Notification]):
             filters.append(~needs_ack)
         stmt = select(Notification.id).where(*filters)
         return [row[0] for row in (await db.execute(stmt)).all()]
+
+    async def get_own_ids(
+        self, db: AsyncSession, viewer: Viewer, pks: Sequence[int] | None = None, *, read_only: bool = False
+    ) -> list[int]:
+        """
+        这个人**能删**的通知 ID：只有点名发给他本人的那几行（#449）
+
+        🔴 不能复用 `visible_to`：它包含广播（`recipient_id IS NULL`）—— 公告、每日问候、手动全员发都是
+        **全员共用的一行**，删掉就是所有人一起看不到。定向发送按收件人每人一行（`notification_service.send`
+        里 fan-out），删自己那一行不影响任何人
+
+        :param db: 数据库会话
+        :param viewer: 看的人
+        :param pks: 只在这批里挑；`None` 表示不限
+        :param read_only: 只要已读的（「清空已读」）
+        :return:
+        """
+        if pks is not None and not pks:
+            return []
+        filters: list[ColumnElement[bool]] = [Notification.recipient_id == viewer.id, Notification.deleted == 0]
+        if pks is not None:
+            filters.append(Notification.id.in_(list(dict.fromkeys(pks))))
+        if read_only:
+            filters.append(~_unread(viewer))
+        stmt = select(Notification.id).where(*filters)
+        return list((await db.scalars(stmt)).all())
+
+    async def delete_own(self, db: AsyncSession, pks: Sequence[int]) -> int:
+        """
+        逻辑删除这批通知 + 清掉它们的已读标记。**调用方负责先用 `get_own_ids` 过滤**
+
+        :param db: 数据库会话
+        :param pks: 通知 ID 列表
+        :return: 删除的行数
+        """
+        if not pks:
+            return 0
+        await self.delete_reads(db, pks)
+        return await self.delete_model_by_column(
+            db,
+            allow_multiple=True,
+            logical_deletion=True,
+            deleted_flag_column='deleted',
+            deleted_flag_value=self.model.id,
+            deleted_at_column='deleted_time',
+            deleted_at_factory=timezone.now(),
+            id__in=list(pks),
+            deleted=0,
+        )
 
     async def get_ids_by_sources(self, db: AsyncSession, sources: Sequence[str]) -> dict[str, int]:
         """

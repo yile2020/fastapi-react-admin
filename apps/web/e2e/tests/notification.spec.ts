@@ -109,4 +109,85 @@ test.describe("消息通知中心", () => {
     // 少了失效就会出现「列表全是已读、红点还挂着 2」这种自相矛盾的界面
     await expect(page.getByTestId("notification-badge")).toBeHidden()
   })
+
+  // ─── 删除（#449）：只删点名发给我本人的 ────────────────────────────────────────
+
+  /** 按标题从接口拿这一行的 ID（列表页的 testid 都带 ID） */
+  async function idOf(api: { get: (p: string) => Promise<unknown> }, title: string): Promise<string> {
+    const page = (await api.get(
+      `/api/v1/sys/notifications?page=1&size=5&title=${encodeURIComponent(title)}`
+    )) as { items: { id: string }[] }
+    expect(page.items).toHaveLength(1)
+    return page.items[0]!.id
+  }
+
+  test("🔴 消息中心删除一条：列表和红点一起变；公告（全员共用的一行）没有删除按钮、也勾不上", async ({
+    authedPage: page,
+    api,
+  }) => {
+    const me = (await api.get("/api/v1/sys/users/me")) as Me
+    const tag = uniqueCode("D")
+    const mine = `E2E删除-${tag}-我的`
+    const everyone = `E2E删除-${tag}-公告`
+    await api.post("/api/v1/sys/notifications/send", {
+      title: mine, content: "端到端测试用", category: 0, link: null, recipient_ids: [me.id],
+    })
+    // 公告：收件箱里是全员共用的一行，删了就是所有人一起看不到 —— 后端不让删，前端也不该给入口。
+    // 🔴 用公告不用「手动全员发」：全员发的那一行谁都删不掉，每跑一次就在 fba_test 里永久多一条（#451 评审）；
+    // 公告删掉时会把收件箱那一行一起撤回（`retract_by_source`），结尾删公告就收干净了
+    const notice = (await api.post("/api/v1/sys/notices", {
+      title: everyone, type: 1, status: 1, content: "<p>端到端测试用</p>",
+    })) as { id: string }
+    try {
+      await deleteFlow()
+    } finally {
+      await api.del("/api/v1/sys/notices", { pks: [notice.id] })
+    }
+
+    async function deleteFlow() {
+      const mineId = await idOf(api, mine)
+      const everyoneId = await idOf(api, everyone)
+
+      await page.goto(`/notification?title=${encodeURIComponent(`E2E删除-${tag}`)}`)
+      await expect(page.getByTestId("notification-badge")).toHaveText("2")
+      await expect(page.getByTestId(`open-notification-${everyoneId}`)).toBeVisible()
+
+      // 不能删的行：没有删除按钮、复选框禁用（「全选本页」也不会把它勾进去，见 `enableRowSelection`）
+      await expect(page.getByTestId(`notification-delete-${everyoneId}`)).toHaveCount(0)
+      await expect(page.getByTestId(`select-row-${everyoneId}`)).toBeDisabled()
+      // 「全选本页」也不能把它勾进去：只禁单元格的复选框不够，表上要 `enableRowSelection`
+      await page.getByTestId("select-all").click()
+      await expect(page.getByTestId("bulk-count")).toHaveText(/\b1\b/)
+      await page.getByTestId("select-all").click()
+
+      await page.getByTestId(`notification-delete-${mineId}`).click()
+      await expect(page.getByTestId("confirm-dialog")).toBeVisible()
+      await page.getByTestId("confirm-ok").click()
+
+      await expect(page.getByTestId(`open-notification-${mineId}`)).toBeHidden()
+      await expect(page.getByTestId(`open-notification-${everyoneId}`)).toBeVisible()
+      // 删的是一条未读：外壳里的红点跟着少 1（同一个 query，少了失效就是「列表没了、红点还在」）
+      await expect(page.getByTestId("notification-badge")).toHaveText("1")
+    }
+  })
+
+  test("铃铛里悬停删除发给我的那条，红点跟着消失", async ({ authedPage: page, api }) => {
+    const me = (await api.get("/api/v1/sys/users/me")) as Me
+    const title = `E2E铃铛删除-${uniqueCode("D")}`
+    await api.post("/api/v1/sys/notifications/send", {
+      title, content: "端到端测试用", category: 0, link: null, recipient_ids: [me.id],
+    })
+
+    await page.goto("/dashboard")
+    await expect(page.getByTestId("notification-badge")).toHaveText("1")
+    await page.getByTestId("notification-bell").click()
+    const item = page.locator("li").filter({ has: page.getByTestId("notification-item").filter({ hasText: title }) })
+    // 🔴 没悬停时按钮透明，而且必须点不到：只有 `opacity-0` 的话，触屏上点那一行右上角就直接删了（#451 评审）
+    await expect(item.getByTestId("notification-item-delete")).toHaveCSS("pointer-events", "none")
+    await item.hover()
+    await item.getByTestId("notification-item-delete").click()
+
+    await expect(page.getByTestId("notification-item").filter({ hasText: title })).toBeHidden()
+    await expect(page.getByTestId("notification-badge")).toBeHidden()
+  })
 })

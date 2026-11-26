@@ -1,17 +1,18 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
-import { useTable, type ColumnVisibilityState } from '@tanstack/react-table'
-import { IconChecks } from '@tabler/icons-react'
+import { useTable, type ColumnVisibilityState, type RowSelectionState } from '@tanstack/react-table'
+import { IconChecks, IconTrashX } from '@tabler/icons-react'
 
 import { Button } from '@admin/ui/components/button'
 import { DataTable, DataTableColumnVisibility } from '@admin/ui/components/data-table'
 import { QueryBar, countActive, type FilterField } from '@admin/ui/components/query-bar'
+import { toast } from '@admin/ui/components/toast'
 
 import { ConfirmDialog } from '../../shell/confirm-dialog'
 import { NoticeReaderSheet } from '../notice/reader-sheet'
 import { PageHeader } from '../../shell/page-header'
-import { RefreshButton } from '../_shared/filters'
+import { BulkBar, RefreshButton } from '../_shared/filters'
 import { listState, usePageRecovery } from '../_shared/list-query'
 import { DEFAULT_PAGE_SIZE } from '../_shared/pagination'
 import { useQuerySearch } from '../_shared/use-query-search'
@@ -21,6 +22,9 @@ import {
   notificationKeys,
   notificationsQuery,
   unreadCountQuery,
+  useDeleteNotification,
+  useDeleteNotifications,
+  useDeleteReadNotifications,
   useMarkAllNotificationsRead,
   useMarkNotificationRead,
   type Notification,
@@ -113,8 +117,37 @@ export function NotificationPage({
 
   const [columnVisibility, setColumnVisibility] = React.useState<ColumnVisibilityState>({})
   const [markAllOpen, setMarkAllOpen] = React.useState(false)
+  const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
+  const [pendingDelete, setPendingDelete] = React.useState<Notification | null>(null)
+  const [deleteError, setDeleteError] = React.useState<string | null>(null)
+  const [bulkOpen, setBulkOpen] = React.useState(false)
+  const [clearReadOpen, setClearReadOpen] = React.useState(false)
+  // 批量 / 清空失败时的原因：确认框留着、原因写在问题下面（同单条删除）。原来 `finally` 里直接关框，
+  // 异常从 `void onConfirm()` 漏成一次没人接的 rejection，界面上什么都没有（硬纪律 9，#451 评审）
+  const [bulkError, setBulkError] = React.useState<string | null>(null)
+  const [clearError, setClearError] = React.useState<string | null>(null)
+
+  // 换页 / 换筛选清掉选中：分页在服务端，留着的选中项已不在可见行里，批量删除会打到看不见的记录上
+  const patch = React.useCallback(
+    (next: Partial<NotificationPageSearch>) => {
+      setRowSelection({})
+      onSearchChange?.({ ...search, ...next })
+    },
+    [onSearchChange, search]
+  )
 
   const q = useQuerySearch({ fields: FIELDS, search, onSearchChange, refreshKey: notificationKeys.all })
+  const submitQuery = React.useCallback(
+    (v: Parameters<typeof q.submit>[0]) => {
+      setRowSelection({})
+      q.submit(v)
+    },
+    [q]
+  )
+  const resetQuery = React.useCallback(() => {
+    setRowSelection({})
+    q.reset()
+  }, [q])
 
   const raw = q.params as { title?: string; category?: number; unread?: number }
   const params: NotificationListParams = {
@@ -130,7 +163,7 @@ export function NotificationPage({
   const listQuery = useQuery(notificationsQuery(params))
   const { data, isFetching } = listQuery
   const list = listState(listQuery)
-  usePageRecovery(listQuery, { page, size, onPageChange: (page) => onSearchChange?.({ ...search, page: page === 1 ? undefined : page }) })
+  usePageRecovery(listQuery, { page, size, onPageChange: (page) => patch({ page: page === 1 ? undefined : page }) })
   const rows = data?.items ?? []
   const total = data?.total ?? 0
   const totalPages = data?.total_pages ?? 1
@@ -138,6 +171,9 @@ export function NotificationPage({
   const unread = useQuery(unreadCountQuery)
   const markRead = useMarkNotificationRead()
   const markAll = useMarkAllNotificationsRead()
+  const delOne = useDeleteNotification()
+  const delMany = useDeleteNotifications()
+  const delRead = useDeleteReadNotifications()
 
   const { linkOf, readIfUnread } = useNotificationOpen()
   const handleMarkRead = React.useCallback((n: Notification) => markRead.mutate(n.id), [markRead])
@@ -149,7 +185,7 @@ export function NotificationPage({
   // 标已读一律由抽屉做（点那一行 / 地址栏深链都一样）：它看得到这条是不是「必须确认」（#190）。
   // 原来点行时先 `readIfUnread`、抽屉再按 `rowAlreadyMarked` 跳过，必须确认的就被那一下替人确认了
   const columns = React.useMemo(
-    () => buildColumns(linkOf, readIfUnread, handleMarkRead, openNotice, t),
+    () => buildColumns(linkOf, readIfUnread, handleMarkRead, openNotice, setPendingDelete, t),
     [linkOf, readIfUnread, handleMarkRead, openNotice, t]
   )
 
@@ -159,23 +195,33 @@ export function NotificationPage({
     // v9 的列定义数组混用不同 TValue 会形成联合类型，与 useTable 期望的
     // ColumnDef<..., unknown>[] 不兼容（库的类型方差限制）
     columns: columns as never,
-    state: { columnVisibility },
+    state: { columnVisibility, rowSelection },
     getRowId: (row) => row.id,
     manualPagination: true,
     rowCount: total,
+    // 只有发给我本人的能删（#449）。「全选本页」也认它 —— 只在复选框上禁用的话，表头一勾就把公告也勾进去了
+    enableRowSelection: (row) => row.original.deletable,
     onColumnVisibilityChange: setColumnVisibility,
+    onRowSelectionChange: setRowSelection,
   })
+  const selectedIds = Object.keys(rowSelection).filter((k) => rowSelection[k])
 
   // 「全部已读」标得掉的条数：必须确认的公告后端会跳过（#190），按总数判的话只剩它们时按钮还亮着、点了什么都不变
   const markable = markableUnread(unread.data)
   const mustAck = unread.data?.requires_ack_count ?? 0
+  // 「清空已读」能删几条（#451 评审：原来按钮一直亮，没东西可清也让人确认一次）= 发给我本人的已读条数。
+  // 🔴 单独查一页 size=1 只拿 total，**不塞进 `/unread-count`**：铃铛每次收件箱变动都重拉那个接口，后端只许它一条统计查询
+  // （`test_unread_count_is_one_scan`，第一版就是塞进去被它拦下的）。key 在 `notificationKeys.all` 下，删除 / 标已读后跟着失效。
+  // 🔴 只在**确实知道是 0** 时禁用：这条查询挂了 `clearable` 是 undefined，按钮照旧能点（硬纪律 9，同移动端「全部已读」）
+  const clearableQuery = useQuery(notificationsQuery({ page: 1, size: 1, unread: false, mine: true }))
+  const clearable = clearableQuery.data?.total
   const hasFilter = countActive(q.applied, FIELDS) > 0
 
   return (
     <PageShell fill="always">
       <PageHeader
         title={t('消息中心')}
-        description={t('系统消息与公告的收件箱。已读状态只属于你自己。')}
+        description={t('系统消息与公告的收件箱。已读和删除只影响你自己；公告和全员通知不能删除。')}
       />
 
       <ListBody>
@@ -183,8 +229,8 @@ export function NotificationPage({
           fields={FIELDS}
           value={q.value}
           onChange={q.setValue}
-          onSearch={q.submit}
-          onReset={q.reset}
+          onSearch={submitQuery}
+          onReset={resetQuery}
           applied={q.applied}
           loading={isFetching}
           viewsStorageKey="qb:notification"
@@ -200,8 +246,20 @@ export function NotificationPage({
                 <IconChecks className="size-4" />
                 {markable > 0 ? t('全部已读（{{n}}）', { n: markable }) : t('全部已读')}
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={delRead.isPending || clearable === 0}
+                onClick={() => setClearReadOpen(true)}
+                data-testid="notification-clear-read"
+              >
+                <IconTrashX className="size-4" />
+                {t('清空已读')}
+              </Button>
               <RefreshButton busy={isFetching} onClick={list.onRetry} />
               <DataTableColumnVisibility table={table} columnLabels={COLUMN_LABELS} />
+              {/* 批量条放左组末尾：它随选中行出现 / 消失，放右组会让「搜索 / 重置」横向位移 */}
+              <BulkBar count={selectedIds.length} pending={delMany.isPending} onDelete={() => setBulkOpen(true)} />
             </>
           }
         />
@@ -226,10 +284,10 @@ export function NotificationPage({
               pageIndex: page - 1,
               pageCount: totalPages,
               pageSize: size,
+              selectedCount: selectedIds.length,
               totalCount: total,
-              onPageChange: (i) =>
-                onSearchChange?.({ ...search, page: i === 0 ? undefined : i + 1 }),
-              onPageSizeChange: (s) => onSearchChange?.({ ...search, size: s, page: undefined }),
+              onPageChange: (i) => patch({ page: i === 0 ? undefined : i + 1 }),
+              onPageSizeChange: (s) => patch({ size: s, page: undefined }),
             }}
           />
         </div>
@@ -260,6 +318,90 @@ export function NotificationPage({
         onConfirm={async () => {
           await markAll.mutateAsync()
           setMarkAllOpen(false)
+        }}
+      />
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(o) => {
+          if (o) return
+          setPendingDelete(null)
+          setDeleteError(null)
+        }}
+        title={t('删除通知')}
+        description={pendingDelete ? t('确定删除「{{title}}」吗？此操作不可撤销。', { title: pendingDelete.title }) : ''}
+        error={deleteError}
+        confirmText={t('删除')}
+        destructive
+        pending={delOne.isPending}
+        onConfirm={async () => {
+          if (!pendingDelete) return
+          setDeleteError(null)
+          try {
+            await delOne.mutateAsync(pendingDelete.id)
+            setRowSelection((s) => {
+              const { [pendingDelete.id]: _, ...rest } = s
+              return rest
+            })
+            setPendingDelete(null)
+          } catch (e) {
+            setDeleteError(e instanceof Error ? e.message : t('删除失败'))
+          }
+        }}
+      />
+
+      <ConfirmDialog
+        open={bulkOpen}
+        onOpenChange={(o) => {
+          setBulkOpen(o)
+          if (!o) setBulkError(null)
+        }}
+        title={t('批量删除通知')}
+        description={t('确定删除选中的 {{n}} 条通知吗？此操作不可撤销。', { n: selectedIds.length })}
+        error={bulkError}
+        confirmText={t('删除')}
+        destructive
+        pending={delMany.isPending}
+        onConfirm={async () => {
+          setBulkError(null)
+          try {
+            const n = await delMany.mutateAsync(selectedIds)
+            setRowSelection({})
+            setBulkOpen(false)
+            toast.success(t('已删除 {{n}} 条通知', { n }))
+          } catch (e) {
+            setBulkError(e instanceof Error ? e.message : t('删除失败'))
+          }
+        }}
+      />
+
+      {/* 条数来自 `clearableQuery`：已读的可能在别的页，前端自己数不出来 */}
+      <ConfirmDialog
+        open={clearReadOpen}
+        onOpenChange={(o) => {
+          setClearReadOpen(o)
+          if (!o) setClearError(null)
+        }}
+        title={t('清空已读')}
+        description={
+          clearable === undefined
+            ? t('会删除发给你个人的全部已读通知，公告和全员通知不受影响。此操作不可撤销。')
+            : t('会删除发给你个人的 {{n}} 条已读通知，公告和全员通知不受影响。此操作不可撤销。', { n: clearable })
+        }
+        error={clearError}
+        confirmText={t('清空')}
+        destructive
+        pending={delRead.isPending}
+        onConfirm={async () => {
+          setClearError(null)
+          try {
+            const n = await delRead.mutateAsync()
+            setRowSelection({})
+            setClearReadOpen(false)
+            toast.success(n > 0 ? t('已删除 {{n}} 条通知', { n }) : t('没有可清空的已读通知'))
+          } catch (e) {
+            setClearError(e instanceof Error ? e.message : t('删除失败'))
+          }
         }}
       />
     </PageShell>
