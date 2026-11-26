@@ -6,6 +6,7 @@
  *
  * 每个模块都对得上仓库里的真实目录（2026-11-26 核对）：客户端 = apps/web · desktop · mobile + packages/*；
  * 接入层 = apps/web/nginx.conf（/api、/ws、/uploads）、Vite 开发服务器、/api/open/v1；
+ * ⚠️ 开发时 Vite 只代理 /uploads，接口请求由浏览器直连 :8088（API_BASE），所以 Vite 那张卡写「接口直连」，别写成「/api 反代」；
  * 应用层 = backend/app/admin/api/v1/{auth,sys,log,monitor} + backend/app/task，插件 = backend/plugin/*（plugin.toml 的 summary）；
  * 基础设施 / 公共层 = backend/common/*；数据层 = 三种数据库 + Redis（缓存 · 会话 · 默认的 Celery broker）+ OpenDAL 对象存储。
  * 加了 / 删了模块或插件时一起改这里。
@@ -34,7 +35,7 @@ export const architecture = {
         index: '02', label: '接入层', sub: 'Nginx · Vite', flow: 'ASGI · FastAPI',
         cards: [
           { code: 'Nginx', title: '生产环境', icon: 'server', tags: ['静态资源', '/api 反代', '/ws 推送'] },
-          { code: 'Vite', title: '开发环境', icon: 'zap', tags: ['热更新', '端口 8888'] },
+          { code: 'Vite', title: '开发环境', icon: 'zap', tags: ['页面热更新', '接口直连 :8088'] },
           { code: '/api/open/v1', title: '开放接口', icon: 'key', tags: ['AK/SK 签名', 'Webhook'] },
         ],
       },
@@ -98,7 +99,7 @@ export const architecture = {
         index: '02', label: 'Gateway', sub: 'Nginx · Vite', flow: 'ASGI · FastAPI',
         cards: [
           { code: 'Nginx', title: 'Production', icon: 'server', tags: ['Static assets', '/api proxy', '/ws push'] },
-          { code: 'Vite', title: 'Development', icon: 'zap', tags: ['Hot reload', 'Port 8888'] },
+          { code: 'Vite', title: 'Development', icon: 'zap', tags: ['Hot reload', 'API direct to :8088'] },
           { code: '/api/open/v1', title: 'Open API', icon: 'key', tags: ['AK/SK signing', 'Webhooks'] },
         ],
       },
