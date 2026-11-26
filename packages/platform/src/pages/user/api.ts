@@ -222,6 +222,14 @@ export function useResetUserPassword() {
   })
 }
 
+/** 清掉用户的全部通行密钥（超管）：设备丢了 / 离职交接。清完这个人只能用密码等别的方式登录 */
+export function useResetUserPasskeys() {
+  return useMutation({
+    meta: { suppressErrorToast: true },
+    mutationFn: (id: string) => api.DELETE(`/api/v1/sys/users/${id}/passkeys`),
+  })
+}
+
 /** 重置用户的二次验证（#181，超管）：手机丢了的人下次登录重新绑定（被强制的）/ 直接关掉（没被强制的） */
 export function useResetUserMfa() {
   return useMutation({

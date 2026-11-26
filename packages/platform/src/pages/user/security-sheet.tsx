@@ -15,7 +15,7 @@ import { usePerm } from '../../auth/use-perm'
 import { ConfirmDialog } from '../../shell/confirm-dialog'
 import { FormSection } from '../_shared/form-fields'
 import {
-  useResetUserMfa, useResetUserPassword, useToggleUserPermission,
+  useResetUserMfa, useResetUserPasskeys, useResetUserPassword, useToggleUserPermission,
   type User, type UserPermissionType,
 } from './api'
 
@@ -83,6 +83,9 @@ export function UserSecuritySheet({
   const resetMfa = useResetUserMfa()
   const [mfaConfirm, setMfaConfirm] = React.useState(false)
   const [mfaState, setMfaState] = React.useState<{ kind: 'idle' | 'ok' | 'error'; msg?: string }>({ kind: 'idle' })
+  const resetPasskeys = useResetUserPasskeys()
+  const [passkeyConfirm, setPasskeyConfirm] = React.useState(false)
+  const [passkeyState, setPasskeyState] = React.useState<{ kind: 'idle' | 'ok' | 'error'; msg?: string }>({ kind: 'idle' })
 
   const [busy, setBusy] = React.useState<UserPermissionType | null>(null)
   const [flagError, setFlagError] = React.useState<string | null>(null)
@@ -98,6 +101,7 @@ export function UserSecuritySheet({
     setFlagError(null)
     setPwd(''); setPwd2(''); setPwdState('idle'); setPwdMsg(null)
     setMfaState({ kind: 'idle' })
+    setPasskeyState({ kind: 'idle' })
   }, [open, user?.id])
 
   if (!user) return null
@@ -268,6 +272,34 @@ export function UserSecuritySheet({
               )}
             </div>
           </FormSection>
+
+          {/* ── 通行密钥 ── */}
+          <FormSection title={t('通行密钥')}>
+            <p className="text-xs text-muted-foreground">
+              {t('设备丢了或离职交接时用。清除后这个人加过的所有通行密钥都不能再登录，要用密码等别的方式登录后重新添加。')}
+            </p>
+            <div className="flex items-center gap-3">
+              <Button
+                type="button" size="sm" variant="outline" data-testid="sec-passkey-reset"
+                disabled={!isSuperuser || resetPasskeys.isPending}
+                onClick={() => setPasskeyConfirm(true)}
+              >
+                {t('清除全部通行密钥')}
+              </Button>
+              {passkeyState.kind === 'ok' && (
+                <span className="flex items-center gap-1.5 text-sm text-emerald-600 dark:text-emerald-400" data-testid="sec-passkey-ok">
+                  <IconCheck className="size-3.5" />
+                  {t('已清除')}
+                </span>
+              )}
+              {passkeyState.kind === 'error' && (
+                <span className="flex items-center gap-1.5 text-sm text-destructive" data-testid="sec-passkey-error">
+                  <IconAlertTriangle className="size-3.5 shrink-0" />
+                  {passkeyState.msg}
+                </span>
+              )}
+            </div>
+          </FormSection>
         </div>
 
         <SheetFooter>
@@ -291,6 +323,24 @@ export function UserSecuritySheet({
           } catch (e) {
             // 「还没有开启二次验证」这类服务端原话直接显示，别报一句笼统的失败
             setMfaState({ kind: 'error', msg: e instanceof ApiError ? e.message : t('重置失败') })
+          }
+        }}
+      />
+      <ConfirmDialog
+        open={passkeyConfirm}
+        onOpenChange={setPasskeyConfirm}
+        title={t('清除全部通行密钥')}
+        description={t('确定清除「{{name}}」的全部通行密钥？清除后马上不能再用它们登录。', { name: user.username })}
+        confirmText={t('确定清除')}
+        destructive
+        pending={resetPasskeys.isPending}
+        onConfirm={async () => {
+          setPasskeyConfirm(false)
+          try {
+            await resetPasskeys.mutateAsync(user.id)
+            setPasskeyState({ kind: 'ok' })
+          } catch (e) {
+            setPasskeyState({ kind: 'error', msg: e instanceof ApiError ? e.message : t('清除失败') })
           }
         }}
       />

@@ -3,6 +3,7 @@ import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query
 import { api, API_BASE, uploadFile } from '../../api-client/client'
 import type { LoginLog } from '../_shared/login-log'
 import { t } from '@admin/i18n'
+import { createPasskeyCredential } from '../../auth/passkey'
 import { authKeys } from '../../auth/queries'
 
 /**
@@ -359,3 +360,54 @@ export const useMfaEnable = () => useMfaAction<{ recovery_codes: string[] }>('/a
 export const useMfaDisable = () => useMfaAction<null>('/api/v1/sys/users/me/mfa/disable')
 export const useMfaRegenerate = () =>
   useMfaAction<{ recovery_codes: string[] }>('/api/v1/sys/users/me/mfa/recovery-codes')
+
+// ─── 通行密钥（Passkey）─────────────────────────────────────────────────────
+
+export type Passkey = {
+  id: string
+  name: string
+  backed_up: boolean
+  transports: string | null
+  created_time: string
+  last_used_time: string | null
+}
+
+export const passkeyKeys = { list: ['profile', 'passkeys'] as const }
+
+export const passkeysQuery = queryOptions({
+  queryKey: passkeyKeys.list,
+  queryFn: () => api.GET<Passkey[]>('/api/v1/sys/users/me/passkeys'),
+})
+
+/** 添加一把：取注册挑战 → 浏览器弹指纹 / 面容 / PIN → 交注册结果。浏览器那一步的错原样抛（`passkeyErrorMessage` 翻译） */
+export function useAddPasskey() {
+  const qc = useQueryClient()
+  return useMutation({
+    meta: { suppressErrorToast: true },
+    mutationFn: async (name: string) => {
+      const options = await api.POST<Record<string, unknown>>('/api/v1/sys/users/me/passkeys/options')
+      const credential = await createPasskeyCredential(options)
+      return api.POST<Passkey>('/api/v1/sys/users/me/passkeys', { body: { name, credential } })
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: passkeyKeys.list }),
+  })
+}
+
+export function useRenamePasskey() {
+  const qc = useQueryClient()
+  return useMutation({
+    meta: { suppressErrorToast: true },
+    mutationFn: ({ id, name }: { id: string; name: string }) =>
+      api.PUT<null>(`/api/v1/sys/users/me/passkeys/${id}`, { body: { name } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: passkeyKeys.list }),
+  })
+}
+
+export function useDeletePasskey() {
+  const qc = useQueryClient()
+  return useMutation({
+    meta: { suppressErrorToast: true },
+    mutationFn: (id: string) => api.DELETE<null>(`/api/v1/sys/users/me/passkeys/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: passkeyKeys.list }),
+  })
+}

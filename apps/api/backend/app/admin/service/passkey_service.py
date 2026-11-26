@@ -50,6 +50,7 @@ from backend.app.admin.schema.passkey import PasskeyLoginOptions
 from backend.common.exception import errors
 from backend.common.i18n import t
 from backend.common.log import log
+from backend.common.security.data_scope import bypass_data_scope
 from backend.core.conf import settings
 from backend.database.redis import redis_client
 from backend.utils.timezone import timezone
@@ -88,6 +89,23 @@ def _invalid() -> errors.AuthorizationError:
     return errors.AuthorizationError(msg=t('error.passkey.invalid'))
 
 
+async def _from_db(db: AsyncSession, user: Any) -> User:
+    """
+    🔴 注册时的用户句柄要用**库里**那一行的 uuid，不能用 `request.user`（Redis 里的登录快照）。
+
+    登录时是按凭据查库里的用户、拿它的 uuid 比 userHandle；注册用快照的话，两边一旦不是同一个值，
+    这把钥匙就永远登不上（「userHandle 对不上」）。实测：本机几套库共用一个 Redis、管理员的雪花 ID 相同，
+    快照里的 uuid 是别的库写进去的 —— 添加成功、登录必失败，界面上只有一句「通行密钥无效」
+    """
+    # 🔴 要 `bypass_data_scope()`：已登录请求里 DAO 会套上当前用户的数据范围，STAFF 这类「开了过滤、没有规则」的人
+    # 连自己都查不到（同 `app/admin` 分册「用户快照」那一节的刷新 token 那条）
+    with bypass_data_scope():
+        row = await user_dao.get(db, user.id)
+    if row is None:
+        raise errors.NotFoundError(msg=t('error.user.not_found'))
+    return row
+
+
 async def list_mine(db: AsyncSession, user_id: int) -> list[UserPasskey]:
     rows = await db.scalars(select(UserPasskey).where(UserPasskey.user_id == user_id).order_by(UserPasskey.id))
     return list(rows)
@@ -101,9 +119,10 @@ async def _own(db: AsyncSession, user_id: int, pk: int) -> UserPasskey:
     return row
 
 
-async def registration_options(db: AsyncSession, user: User) -> dict[str, Any]:
+async def registration_options(db: AsyncSession, user: Any) -> dict[str, Any]:
     """添加一把：生成注册挑战。原样交给 `PublicKeyCredential.parseCreationOptionsFromJSON()`"""
     _require_enabled()
+    user = await _from_db(db, user)
     rows = await list_mine(db, user.id)
     if len(rows) >= settings.PASSKEY_MAX_PER_USER:
         raise errors.RequestError(msg=t('error.passkey.too_many', max=settings.PASSKEY_MAX_PER_USER))
@@ -228,7 +247,8 @@ async def verify_login(
     if row is None:
         log.info('通行密钥登录：库里没有这把凭据（可能已被删除 / 管理员重置）')
         raise _invalid()
-    user = await user_dao.get(db, row.user_id)
+    with bypass_data_scope():  # 匿名请求本来没有范围上下文；包上是防将来有人在已登录的上下文里调它
+        user = await user_dao.get(db, row.user_id)
     if user is None:
         log.info(f'通行密钥登录：凭据 {row.id} 的用户已不存在')
         raise _invalid()

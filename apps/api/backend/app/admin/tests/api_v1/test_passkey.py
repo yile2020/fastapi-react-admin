@@ -363,3 +363,27 @@ def test_production_check(rp_id: str, origins: list[str], problem: str | None) -
         assert result is None
     else:
         assert result is not None and problem in result, result
+
+
+def test_registration_uses_the_uuid_in_the_database_not_the_cached_snapshot(client: TestClient, me) -> None:
+    """🔴 浏览器实测踩出来的：注册时用户句柄取自 Redis 里的登录快照，登录时取自库 —— 两边不一致就永远登不上。
+
+    本机几套库共用一个 Redis、管理员的雪花 ID 相同，快照里的 uuid 是别的库写进去的：
+    添加成功，用它登录一律「通行密钥无效」。
+    这里把快照里的 uuid 改掉来复现
+    """
+    from backend.database.redis import redis_client
+
+    key = f'{settings.JWT_USER_REDIS_PREFIX}:{me["id"]}'
+    assert client.get('/sys/users/me', headers=me['headers']).json()['code'] == 200  # 焐热快照
+    raw = client.portal.call(redis_client.get, key)
+    assert raw, '前提：登录快照在 Redis 里（不然改不了它，这条证明不了什么）'
+    snapshot = json.loads(raw)
+    snapshot['uuid'] = '00000000-0000-4000-8000-000000000000'
+    client.portal.call(redis_client.set, key, json.dumps(snapshot))
+    try:
+        auth = SoftAuthenticator()
+        assert _register(client, me['headers'], auth).json()['code'] == 200
+        assert _login(client, auth)[0].json()['code'] == 200
+    finally:
+        client.portal.call(redis_client.delete, key)
