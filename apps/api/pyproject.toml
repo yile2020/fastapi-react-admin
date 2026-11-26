@@ -83,6 +83,7 @@ dependencies = [
   "tencentcloud-sdk-python-common[async]>=3.1.153",  # plugin/sms（异步客户端要这个 extra，带 httpx）
   "tencentcloud-sdk-python-sms>=3.1.153",  # plugin/sms（腾讯云官方 SDK）
   "user-agents>=2.2.0",
+  "webauthn>=3.0.1",  # 通行密钥（Passkey）登录：注册 / 断言的校验
 ]
 dynamic = ["version"]
 

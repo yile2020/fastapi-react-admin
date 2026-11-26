@@ -12,6 +12,7 @@ from backend.app.admin.crud.crud_menu import menu_dataset
 from backend.app.admin.crud.crud_user import user_dao
 from backend.app.admin.model import User
 from backend.app.admin.schema.mfa import MfaChallenge, MfaChallengeParam, MfaSetupInfo, MfaTokenParam
+from backend.app.admin.schema.passkey import PasskeyLoginParam
 from backend.app.admin.schema.token import GetLoginToken, GetMfaEnrollToken, GetNewToken
 from backend.app.admin.schema.user import (
     CAPTCHA_UUID_PATTERN,
@@ -20,6 +21,7 @@ from backend.app.admin.schema.user import (
     AuthPhoneLoginParam,
 )
 from backend.app.admin.service import mfa_service as mfa
+from backend.app.admin.service import passkey_service
 from backend.app.admin.service.login_log_service import login_log_service
 from backend.app.admin.service.mfa_service import gate as mfa_gate
 from backend.app.admin.service.user_password_history_service import password_security_service
@@ -535,6 +537,88 @@ class AuthService:
                 login_time=timezone.now(),
                 status=LoginLogStatusType.success.value,
                 msg=t('success.login.success'),
+            )
+            return GetLoginToken(
+                access_token=access_token_data.access_token,
+                access_token_expire_time=access_token_data.access_token_expire_time,
+                session_uuid=access_token_data.session_uuid,
+                password_expire_days_remaining=days_remaining,
+                user=user,  # type: ignore
+            )
+
+    async def passkey_login(
+        self,
+        *,
+        db: AsyncSession,
+        request: Request,
+        response: Response,
+        obj: PasskeyLoginParam,
+        background_tasks: BackgroundTasks,
+    ) -> GetLoginToken:
+        """
+        通行密钥登录（第二步；第一步是 `passkey_service.login_options`）
+
+        🔴 和手机登录同一条：不能只复用「开会话」那段。IP 锁定、停用 / 锁定判定、密码过期、成败计数逐条照做，
+        通行密钥替代的只是「密码对不对」那一步。
+
+        🔴 **不走二次验证（`mfa_gate`）**：挑战里要求了用户验证（UV），带 UV 的通行密钥本身就是「持有设备 +
+        指纹 / 面容 / PIN」两个因素。被策略强制开 MFA 的账号用通行密钥照样直接登进来 ——
+        这是刻意的，见 `passkey_service`。
+
+        失败只计入 IP（`handle_ip_login_failure`），不计入账号：拿不到私钥的人造不出有效断言，
+        按账号计等于谁都能把别人锁住。
+
+        :param db: 数据库会话
+        :param request: 请求对象
+        :param response: 响应对象
+        :param obj: 挑战编号 + 断言
+        :param background_tasks: 后台任务（写登录日志）
+        :return:
+        """
+        user: User | None = None
+        try:
+            ip = ctx.ip
+            await load_login_config(db)
+            await password_security_service.check_ip_lock(ip)
+            try:
+                user, passkey, new_sign_count = await passkey_service.verify_login(db, obj.challenge_id, obj.credential)
+            except errors.AuthorizationError:
+                await password_security_service.handle_ip_login_failure(ip, None)
+                raise
+            lock_reason = await password_security_service.peek_lock_reason(user.id, user.status)
+            if lock_reason is not None:
+                raise errors.AuthorizationError(msg=lock_reason)
+            days_remaining = await password_security_service.check_password_expiry_status(
+                db, user.last_password_changed_time
+            )
+            passkey_service.record_use(passkey, new_sign_count)
+            await self.mark_login_success(user.id)
+            access_token_data = await self._open_session(
+                db=db, request=request, response=response, user=user, client=obj.client
+            )
+        except errors.BaseExceptionError as e:
+            log.error(f'通行密钥登录错误: {e.msg}')
+            e.background = BackgroundTask(
+                login_log_service.create,
+                user_uuid=user.uuid if user else uuid4_str(),
+                # 认不出是谁的凭据时没有用户名可记；「-」和别的登录方式里「用户名没对上」那一行一样占位
+                username=user.username if user else '-',
+                login_time=timezone.now(),
+                status=LoginLogStatusType.fail.value,
+                msg=e.msg,
+            )
+            raise
+        except Exception as e:
+            log.error(f'通行密钥登录错误: {e}')
+            raise
+        else:
+            background_tasks.add_task(
+                login_log_service.create,
+                user_uuid=user.uuid,
+                username=user.username,
+                login_time=timezone.now(),
+                status=LoginLogStatusType.success.value,
+                msg=t('success.login.passkey_success'),
             )
             return GetLoginToken(
                 access_token=access_token_data.access_token,

@@ -146,6 +146,14 @@ error:
     setup_expired: 绑定已过期，请重新扫码
     setup_required: 请先完成二次验证的绑定
     swagger_unsupported: 这个账号开启了二次验证，请从登录页登录（Swagger 调试口做不了第二步）
+  passkey:
+    already_registered: 这把通行密钥已经添加过了
+    challenge_expired: 操作已过期，请重试
+    disabled: 系统没有开启通行密钥登录（管理员要先配置 PASSKEY_RP_ID 和 PASSKEY_ORIGINS）
+    invalid: 通行密钥无效，请换一把或用密码登录
+    not_found: 通行密钥不存在
+    register_failed: 通行密钥没能添加，请重试（要用当前网站的地址打开页面，并完成指纹 / 面容 / PIN 验证）
+    too_many: 最多只能添加 {max} 把通行密钥，请先删掉不用的
   notice:
     not_found: 通知公告不存在
     attachment_invalid: 附件不存在，或者你没有权限使用这个文件
@@ -711,6 +719,7 @@ login_event:
 success:
   login:
     mfa_success: 登录成功（二次验证）
+    passkey_success: 登录成功（通行密钥）
     oauth2_success: 登录成功（OAuth2）
     success: 登录成功
 
