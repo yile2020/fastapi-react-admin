@@ -1,28 +1,50 @@
 /*
  * 全站主题：品牌紫 + Inter / JetBrains Mono，和后台（packages/ui 的 globals.css）、
- * 登录页的榫卯面板（apps/web/src/routes/_guest/-sign-in-brand.tsx）是同一套色。
+ * 登录页的榫卯面板（apps/web/src/routes/_guest/-sign-in-brand.tsx）是同一套品牌色。
  *
  * Starlight 的默认（:root）是深色，浅色在 :root[data-theme='light'] 上 —— 和后台的 `.dark`
- * 方向相反，从后台抄颜色时别抄反了。灰阶整体往品牌色相（277～285）偏一点，
- * 不然紫色强调色压在中性灰上会显得像两个产品。
+ * 方向相反，从后台抄颜色时别抄反了。
+ *
+ * 配色「画布 + 纸面」（2026-11-26）：
+ * - 灰阶只留一点品牌色相（色度 ≤ 0.016），读起来是中性灰。原来每一级灰都掺了 0.02～0.035 的紫，
+ *   浅色发淡紫、深色整页藏青，紫色强调色反而不显眼
+ * - 品牌紫只出现在：链接 · 当前位置（顶栏 / 侧栏 / 目录）· 焦点 · 章节标题前那枚小榫头。
+ *   行内代码、表头、提示块正文一律中性
+ * - 内页的框架（顶栏 · 侧栏 · 目录）落在一层淡紫画布上，正文是一张白纸。字阶在 typography.css
  */
 
 :root {
-  --sl-font: 'Inter Variable', system-ui, -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  /* Windows 上把中文交给「Microsoft YaHei」而不是 system-ui 回落到的「Microsoft YaHei UI」（UI 版行距更紧） */
+  --sl-font: 'Inter Variable', -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
   --sl-font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  --sl-color-accent-low: oklch(0.29 0.11 280);
-  --sl-color-accent: oklch(0.64 0.2 281);
-  --sl-color-accent-high: oklch(0.87 0.075 285);
+  --sl-color-accent-low: oklch(0.3 0.07 280);
+  --sl-color-accent: oklch(0.72 0.15 280);
+  --sl-color-accent-high: oklch(0.86 0.08 285);
 
-  --sl-color-white: oklch(0.985 0.004 285);
-  --sl-color-gray-1: oklch(0.93 0.012 285);
-  --sl-color-gray-2: oklch(0.81 0.02 285);
-  --sl-color-gray-3: oklch(0.66 0.03 283);
-  --sl-color-gray-4: oklch(0.47 0.035 281);
-  --sl-color-gray-5: oklch(0.31 0.035 280);
-  --sl-color-gray-6: oklch(0.215 0.03 280);
-  --sl-color-black: oklch(0.165 0.022 280);
+  --sl-color-white: oklch(0.965 0.004 285);  /* 标题 */
+  --sl-color-gray-1: oklch(0.87 0.008 285);  /* 正文 */
+  --sl-color-gray-2: oklch(0.8 0.01 285);
+  --sl-color-gray-3: oklch(0.66 0.012 285);  /* 次要文字：侧栏未选中项 · 目录 · 图注 */
+  --sl-color-gray-4: oklch(0.45 0.012 285);
+  --sl-color-gray-5: oklch(0.29 0.01 285);   /* 线 */
+  --sl-color-gray-6: oklch(0.215 0.008 285); /* 抬起的面：行内代码 · 悬停 */
+  --sl-color-gray-7: oklch(0.19 0.007 285);  /* 表头 · 代码块 */
+  --sl-color-black: oklch(0.165 0.006 285);  /* 纸面（正文底） */
+
+  --sl-color-text: var(--sl-color-gray-1);
+  --sl-color-bg-nav: var(--sl-color-black);
+  --sl-color-bg-sidebar: var(--sl-color-black);
+  --sl-color-bg-inline-code: var(--sl-color-gray-6);
+  --sl-color-hairline: var(--sl-color-gray-6);
+  --sl-color-hairline-light: var(--sl-color-gray-5);
+  --sl-color-hairline-shade: var(--sl-color-gray-5);
+
+  --link: oklch(0.8 0.11 282);
+  --canvas: oklch(0.125 0.016 285);          /* 内页框架下面那层画布 */
+  --paper-line: oklch(0.27 0.02 285);
+  --current-bg: oklch(0.78 0.15 277);        /* 侧栏当前项：实心品牌墨色 */
+  --current-fg: oklch(0.16 0.03 280);
 
   /* 首页用的品牌色（和登录页 .dark .tenon-panel 那组一致） */
   --brand: oklch(0.78 0.15 277);
@@ -57,19 +79,33 @@
 }
 
 :root[data-theme='light'] {
-  --sl-color-accent-low: oklch(0.93 0.035 285);
-  --sl-color-accent: oklch(0.457 0.24 277);
-  --sl-color-accent-high: oklch(0.34 0.18 277);
+  --sl-color-accent-low: oklch(0.955 0.03 285);
+  --sl-color-accent: oklch(0.5 0.21 277);
+  --sl-color-accent-high: oklch(0.42 0.2 277);
 
-  --sl-color-white: oklch(0.17 0.02 280);
-  --sl-color-gray-1: oklch(0.25 0.025 280);
-  --sl-color-gray-2: oklch(0.35 0.03 280);
-  --sl-color-gray-3: oklch(0.5 0.03 280);
-  --sl-color-gray-4: oklch(0.66 0.025 282);
-  --sl-color-gray-5: oklch(0.86 0.014 285);
-  --sl-color-gray-6: oklch(0.955 0.008 285);
-  --sl-color-gray-7: oklch(0.982 0.004 285);
+  --sl-color-white: oklch(0.18 0.012 285);
+  --sl-color-gray-1: oklch(0.27 0.014 285);
+  --sl-color-gray-2: oklch(0.4 0.016 285);
+  --sl-color-gray-3: oklch(0.55 0.014 285);
+  --sl-color-gray-4: oklch(0.7 0.01 285);
+  --sl-color-gray-5: oklch(0.915 0.006 285);
+  --sl-color-gray-6: oklch(0.967 0.004 285);
+  --sl-color-gray-7: oklch(0.985 0.002 285);
   --sl-color-black: oklch(1 0 0);
+
+  --sl-color-text: var(--sl-color-gray-1);
+  --sl-color-bg-nav: var(--sl-color-black);
+  --sl-color-bg-sidebar: var(--sl-color-black);
+  --sl-color-bg-inline-code: var(--sl-color-gray-6);
+  --sl-color-hairline: var(--sl-color-gray-5);
+  --sl-color-hairline-light: var(--sl-color-gray-5);
+  --sl-color-hairline-shade: var(--sl-color-gray-5);
+
+  --link: oklch(0.47 0.21 277);
+  --canvas: oklch(0.955 0.02 285);
+  --paper-line: oklch(0.89 0.02 285);
+  --current-bg: oklch(0.3 0.13 280);
+  --current-fg: oklch(1 0 0);
 
   --brand: oklch(0.457 0.24 277);
   --brand-strong: oklch(0.457 0.24 277);
@@ -101,42 +137,115 @@
   --ring-strong: oklch(0.457 0.24 277 / 0.28);
 }
 
-/* ── 顶栏：半透明 + 一道品牌色的细线 ─────────────────────────────── */
+/* ── 顶栏 ───────────────────────────────────────────────────────── */
 header.header {
   background-color: color-mix(in oklab, var(--sl-color-bg-nav) 82%, transparent);
   backdrop-filter: saturate(1.4) blur(14px);
   -webkit-backdrop-filter: saturate(1.4) blur(14px);
-  border-bottom: 1px solid transparent;
-  border-image: linear-gradient(90deg, transparent, color-mix(in oklab, var(--sl-color-accent) 45%, transparent), transparent) 1;
+  border-bottom: 1px solid var(--sl-color-hairline);
 }
 .site-title {
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-weight: var(--fw-semibold);
+  letter-spacing: -0.02em; /* 站名是纯英文字标，收紧字距只用在这里 */
   color: var(--sl-color-white);
 }
 .site-title img { border-radius: 9999px }
 
-/* ── 侧边栏：当前页是一枚淡色药丸，不是整块实心色 ────────────────── */
-.sidebar-content a[aria-current='page'],
-.sidebar-content a[aria-current='page']:hover,
-.sidebar-content a[aria-current='page']:focus {
-  background: color-mix(in oklab, var(--sl-color-accent) 16%, transparent);
-  color: var(--sl-color-accent-high);
-  font-weight: 600;
-  border-radius: 0.5rem;
+/* ── 内页的宽度分配 ─────────────────────────────────────────────────
+ * Starlight 的做法是把「正文 + 目录」这一对整体居中在侧栏右边的区域里：正文右对齐贴着目录，
+ * 剩下的空白一半给正文左边、一半给目录右边。宽屏上就是侧栏和正文之间空出一大片、
+ * 目录右边又空出一大片，正文却只有 45rem —— 实测 2560 宽时正文左边空 589px、目录容器 913px 宽只用了 268px，
+ * 功能总览那张三列表的第一列被挤到 58px，「权限与组织」一字一行竖着排。
+ * 改成：目录钉在最右边、宽度固定（--toc-width）；正文 56rem，在侧栏和目录之间居中。
+ * 左侧栏保持 Starlight 默认的 18.75rem（--sl-sidebar-width 左右两栏共用）：
+ * 收到 17rem 时「数据权限（RBAC + 行级数据范围）」会折成两行。 */
+:root {
+  --sl-content-width: 56rem;
+  --toc-width: 16rem;
 }
-.sidebar-content a { border-radius: 0.5rem }
+/* 目录收起后只留右上角那个按钮（DocsToc.astro）：目录栏缩到刚好放下它（内层宽 = 3.75rem - 2 × 1rem 内边距 = 按钮的 1.75rem），正文在让出来的地方重新居中 */
+:root[data-toc-collapsed] { --toc-width: 3.75rem }
+@media (min-width: 72rem) {
+  :root[data-has-sidebar][data-has-toc] .right-sidebar-container { width: var(--toc-width) }
+  :root[data-has-sidebar][data-has-toc] .main-pane {
+    --sl-content-margin-inline: auto;
+    width: calc(100% - var(--toc-width));
+  }
+  /* 目录里面那层容器的宽度 Starlight 也是按 --sl-sidebar-width 算的，不跟着改会伸出屏幕右边（实测 2560 宽时超出 13px） */
+  :root[data-has-sidebar][data-has-toc] .right-sidebar-panel .sl-container {
+    width: calc(var(--toc-width) - 2 * var(--sl-sidebar-pad-x));
+    max-width: none;
+  }
+}
+
+/* ── 内页：框架（顶栏 · 侧栏）落在画布上，正文和目录在一张纸上（侧栏常驻时才这样，手机上整页就是纸面） ── */
+@media (min-width: 50rem) {
+  :root[data-has-sidebar] body,
+  :root[data-has-sidebar] header.header,
+  :root[data-has-sidebar] .sidebar-pane { background: var(--canvas) }
+  :root[data-has-sidebar] header.header { border-bottom-color: transparent; backdrop-filter: none; -webkit-backdrop-filter: none }
+  :root[data-has-sidebar] .sidebar-pane { border-inline-end: 0 }
+  /* 纸面画在「正文 + 目录」共同的父元素上（Starlight 里这一层只有一个 lg:sl-flex 类名） */
+  :root[data-has-sidebar] .main-frame > div {
+    min-height: calc(100vh - var(--sl-nav-height) - 0.5rem);
+    margin-top: 0.5rem;
+    background: var(--sl-color-black);
+    border: 1px solid var(--paper-line);
+    border-block-end: 0;
+    border-inline-end: 0;
+    border-start-start-radius: 1.25rem;
+  }
+  :root[data-has-sidebar] .content-panel + .content-panel { border-top-color: var(--paper-line) }
+}
+@media (min-width: 72rem) {
+  /* 目录是 position: fixed 的，透明才能露出下面的纸面 */
+  :root[data-has-sidebar] .right-sidebar { background: transparent; border-inline-start: 0; margin-top: 0.5rem }
+}
+
+/* 表格第一列多是短标签（「领域」「方式」「键」）：自动布局把多出来的宽度按各列内容长短分，短标签列会被挤成一字一行
+ * （实测改前功能总览第一列 58px，「权限与组织」竖着排）。7.5em 放得下 5 个加粗汉字加左右内边距 */
+.sl-markdown-content :is(th, td):first-child:not(:where(.not-content *)) { min-width: 7.5em }
 
 /* ── 正文 ───────────────────────────────────────────────────────── */
-.sl-markdown-content :is(h1, h2, h3) { letter-spacing: -0.022em }
-h1#_top { letter-spacing: -0.03em; font-weight: 800 }
-.sl-markdown-content h2 { font-weight: 700 }
+/* 链接：品牌色的字 + 35% 的下划线，悬停时压实 */
+.sl-markdown-content a:not(:where(.not-content *)) {
+  color: var(--link);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
+  text-decoration-color: color-mix(in oklab, var(--link) 35%, transparent);
+  transition: text-decoration-color 0.15s;
+}
+.sl-markdown-content a:not(:where(.not-content *)):hover { text-decoration-color: currentColor }
+.sl-markdown-content a code { color: inherit }
 
-.sl-markdown-content :not(pre) > code {
-  background: color-mix(in oklab, var(--sl-color-accent) 12%, transparent);
-  border: 1px solid color-mix(in oklab, var(--sl-color-accent) 18%, transparent);
-  border-radius: 0.35rem;
-  padding: 0.05em 0.35em;
+/* 章节标题前一枚小榫头：两块错开的方块，和 logo 同一个咬合意象 */
+.sl-markdown-content h2:not(:where(.not-content *))::before {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-inline-end: 0.45em;
+  vertical-align: 0.12em;
+  background:
+    linear-gradient(var(--sl-color-accent), var(--sl-color-accent)) 0 0 / 60% 60% no-repeat,
+    linear-gradient(color-mix(in oklab, var(--sl-color-accent) 40%, transparent), color-mix(in oklab, var(--sl-color-accent) 40%, transparent)) 100% 100% / 60% 60% no-repeat;
+  border-radius: 1px;
+}
+
+/* 行内代码：中性灰底 + 一圈发丝线，不带紫 */
+.sl-markdown-content :not(pre) > code:not(:where(.not-content *)) {
+  color: var(--sl-color-white);
+  background: var(--sl-color-gray-6);
+  box-shadow: inset 0 0 0 1px var(--sl-color-gray-5);
+}
+
+/* 提示块：语义色只给左边线和标题，底色淡到 7%，正文保持正文色（Starlight 默认是整块饱和黄 / 蓝） */
+.sl-markdown-content .starlight-aside {
+  color: var(--sl-color-text);
+  background: color-mix(in oklab, var(--sl-color-asides-border) 7%, var(--sl-color-black));
+  border-inline-start-width: 3px;
+  border-start-end-radius: 0.6rem;
+  border-end-end-radius: 0.6rem;
 }
 
 .sl-markdown-content table:not(:where(.not-content *)) {
@@ -153,8 +262,8 @@ h1#_top { letter-spacing: -0.03em; font-weight: 800 }
 .sl-markdown-content td :not(pre) > code { overflow-wrap: anywhere }
 .sl-markdown-content tr:last-child td:not(:where(.not-content *)) { border-bottom: none }
 .sl-markdown-content th:not(:where(.not-content *)) {
-  background: color-mix(in oklab, var(--sl-color-accent) 8%, var(--sl-color-gray-6));
-  font-weight: 600;
+  background: var(--sl-color-gray-7);
+  color: var(--sl-color-white);
 }
 
 /* 参数和多端对照表保留可读列宽；小屏只在表格内滚动。 */
@@ -175,7 +284,22 @@ h1#_top { letter-spacing: -0.03em; font-weight: 800 }
 }
 .sl-link-card:hover { transform: translateY(-2px); box-shadow: 0 12px 30px -16px color-mix(in oklab, var(--sl-color-accent) 60%, transparent) }
 
-.pagination-links a { border-radius: 0.9rem }
+/* 上一页 / 下一页：和表格、代码块同一套细边框，不要 Starlight 的阴影；悬停时边框变淡紫、标题变紫、箭头往外挪一点
+   （Starlight 默认悬停把边框换成 gray-2，浅色下是一圈近黑的粗线，和旁边那张一深一浅很扎眼） */
+.pagination-links a {
+  gap: 0.75rem; padding: 0.9rem 1.15rem; border-radius: 0.75rem;
+  border-color: var(--sl-color-gray-5); box-shadow: none; color: var(--sl-color-gray-3);
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+.pagination-links a:hover { border-color: color-mix(in oklab, var(--sl-color-accent) 45%, var(--sl-color-gray-5)); background: color-mix(in oklab, var(--sl-color-accent) 4%, transparent) }
+.pagination-links a > span { font-size: var(--fs-2xs); letter-spacing: 0.04em }
+.pagination-links .link-title { display: inline-block; margin-top: 0.2rem; letter-spacing: normal; color: var(--sl-color-white); transition: color 0.2s ease }
+.pagination-links a:hover .link-title { color: var(--sl-color-accent-high) }
+.pagination-links svg { width: 1.1rem; height: 1.1rem; color: var(--sl-color-gray-3); transition: transform 0.2s ease, color 0.2s ease }
+.pagination-links a:hover svg { color: var(--sl-color-accent-high) }
+.pagination-links a[rel='prev']:hover svg { transform: translateX(-3px) }
+.pagination-links a[rel='next']:hover svg { transform: translateX(3px) }
+@media (prefers-reduced-motion: reduce) { .pagination-links a, .pagination-links svg, .pagination-links .link-title { transition: none } }
 
 /* 首页（有 hero 的页）放宽一点：落地页需要更大的舞台 */
 :root[data-has-hero] { --sl-content-width: 68rem }
@@ -188,9 +312,9 @@ h1#_top { letter-spacing: -0.03em; font-weight: 800 }
   position: fixed; z-index: 100; right: 1rem; bottom: 1rem;
   display: flex; align-items: center; gap: 0.75rem;
   padding: 0.6rem 0.6rem 0.6rem 1rem; border-radius: 999px;
-  font-size: 0.875rem; color: var(--sl-color-white);
+  font-size: var(--fs-sm); color: var(--sl-color-white);
   background: var(--brand-card); box-shadow: 0 0 0 1px var(--brand-chip-line), var(--brand-shadow);
 }
-.en-hint a { font-weight: 600; color: var(--brand); text-decoration: none }
-.en-hint button { width: 1.6rem; height: 1.6rem; border: 0; border-radius: 999px; cursor: pointer; color: var(--sl-color-gray-3); background: transparent; font-size: 1.1rem; line-height: 1 }
+.en-hint a { font-weight: var(--fw-semibold); color: var(--brand); text-decoration: none }
+.en-hint button { width: 1.6rem; height: 1.6rem; border: 0; border-radius: 999px; cursor: pointer; color: var(--sl-color-gray-3); background: transparent; font-size: 1.1rem; line-height: 1 } /* type-ok: 关闭按钮里的 × 是图标，不是文字 */
 .en-hint button:hover { background: var(--brand-chip-bg) }

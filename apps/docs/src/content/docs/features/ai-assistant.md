@@ -7,7 +7,7 @@ sidebar:
 
 AI 助手是一个对话入口（整页对话，外加一个在任何页面都能拉出来的侧滑抽屉），通过调用后端注册好的工具来回答问题、完成后台操作。每一次工具调用都以**当前登录的人**的身份执行：他有哪些权限码、能看到哪些数据行，AI 就只能动这些。写操作先给出预演，本人点「确认执行」才真正落库。每次调用（包括被拒绝的）都写进审计表；外部系统可以通过 MCP 网关调用同一套工具，走的是同一道检查。
 
-## 在界面上哪里找？
+## 界面入口
 
 | 入口 | 路径 | 说明 |
 |---|---|---|
@@ -23,7 +23,7 @@ AI 助手是一个对话入口（整页对话，外加一个在任何页面都�
 [在线演示](https://fra.wubunan.com/sign-in)（`admin` / `123456`）里，这几个页面在「AI 助手」菜单下。模型密钥是每套部署自己配的，所以别指望演示环境一定能对话。没有配置供应商时，对话会明确提示「还没有配置可用的模型供应商」，而不是静默失败。
 :::
 
-## 支持哪些模型供应商？怎么配？
+## 模型供应商
 
 所有供应商都走 OpenAI 兼容的 `POST {base_url}/chat/completions` 流式接口。后端直接用 `httpx`，不依赖任何厂商 SDK（[`llm/client.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/ai/llm/client.py)）。「类型」只影响预填的默认值：
 
@@ -54,7 +54,7 @@ AI_MCP_ENABLED = false
 
 `native` 是自己写的 OpenAI 兼容 function-calling 循环。`pydantic_ai` 把工具作为 external toolset 交给 pydantic-ai，框架自己**执行不了**这些工具。插件分册记录过一次实测：在跑 Qwen3-VL 的内网网关上，同样的问题两个引擎给出的工具调用序列逐条相同。
 
-## AI 助手怎么保证不越权？
+## 权限边界
 
 模型和驱动它的引擎都被当成**不受信任的建议者**：它们只能「提议」调用某个工具。能不能真的执行，只由 [`core/dispatcher.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/ai/core/dispatcher.py) 一处决定。这是整个插件里唯一不可替换的一层：
 
@@ -65,7 +65,7 @@ AI_MCP_ENABLED = false
 
 超级管理员本来就绕过权限码和数据范围，所以种子里的 `admin` 能看到全部工具。工具结果会回传给模型供应商，所以出门前要裁剪：结果超过 4000 字符就截断，`user_list` 最多回 30 行，而且不带邮箱和手机号。
 
-## 写操作执行前会发生什么？
+## 写操作确认
 
 内置 23 个工具里有 12 个会改数据。每一个都要走下面几步：
 
@@ -80,7 +80,7 @@ AI_MCP_ENABLED = false
 `AI_CONFIRM_MUTATING_TOOLS = false` 会去掉第 3 步，模型一调用写操作就直接执行。另外，**没有任何删除类工具**：删除不可逆，还会牵连下级、用户和角色授权。
 :::
 
-## 内置了哪些工具？怎么加一个？
+## 内置工具
 
 | 域 | 只读 | 写（预演 + 确认） |
 |---|---|---|
@@ -110,7 +110,7 @@ async def dept_rename(db: AsyncSession, ctx: RunContext, dept_id: str, new_name:
 
 模型看到的 JSON Schema 从函数签名自动生成。`db`、`ctx` 由 dispatcher 注入，不暴露给模型。
 
-## 审计里记了什么？
+## 审计记录
 
 每次调用在 `ai_tool_invocation` 落一行：用户、会话、工具名、状态（成功 / 失败 / 被拒绝 / 待确认）、权限码、参数（按操作日志同一份 `OPERA_LOG_REDACT_KEYS` 打码）、结果摘要、错误、耗时和渠道（MCP 调用记作 `mcp:<client_id>`）。
 
@@ -118,7 +118,7 @@ async def dept_rename(db: AsyncSession, ctx: RunContext, dept_id: str, new_name:
 
 审计写入放在 SAVEPOINT 里：写失败只丢这一行审计，对话照常继续（[`test_ai_audit.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/ai/tests/test_ai_audit.py) 实测）。在「AI 助手 → 调用日志」里查看，需要 `ai:log:list` 权限。对话界面上，每条回答的正文上方会列出它的工具轨迹（工具、权限码、成败、耗时），这份轨迹随消息一起落库，刷新后还在。
 
-## 外部系统怎么通过 MCP 调用？
+## MCP 接入
 
 `/api/v1/ai/mcp` 是 MCP Streamable HTTP（无状态 + JSON 响应），**默认关闭**：`AI_MCP_ENABLED = false` 时返回 404。网关本身不执行任何东西：列工具走同一个过滤，调工具走同一个 dispatcher，权限、数据范围、审计和网页对话完全一致。凭据在「AI 助手 → MCP 凭据」里发，`fra_mcp_…` 令牌只显示一次，库里只存 SHA-256。
 
@@ -138,7 +138,7 @@ X-Acting-User: <用户名>
 
 凭据停用、删除、重新生成都在下一个请求就生效（每次现查，不缓存），停用 AI 插件也会一并关掉网关。插件分册记录过一次实测（起真实 uvicorn，用官方 `mcp` Python 客户端连）：代表 STAFF 账号调 `dept_list` 被拒；白名单外的用户在 HTTP 层就是 403；4 次调用对应 4 行 `channel=mcp:e2e` 审计；额度设成 5 时连发 7 次，结果是 5 × 200、2 × 429（`Retry-After: 60`）。
 
-## 有哪些开关？
+## 配置项
 
 各页面的权限码：对话 `ai:chat:use` · 模型密钥管理 `ai:provider:list` / `add` / `edit` / `del` · 调用日志 `ai:log:list` · MCP 凭据 `ai:mcp:list` / `add` / `edit` / `del`。AI 插件没有放进参数配置页的项，下面全部在 `.env` 改（写在 `plugin/ai/plugin.toml` 的 `[settings]`），改完重启后端：
 
@@ -156,14 +156,14 @@ X-Acting-User: <用户名>
 | `AI_WEB_BASE_URL` | `http://localhost:8888` | MCP 发起的写操作让本人确认时拼的地址，**上线前改成真实域名** |
 | `AI_EXTERNAL_HTTP_TIMEOUT` · `AI_EXTERNAL_HTTP_USE_PROXY` | `15` · `true` | 外部 HTTP 工具（如天气）的超时，是否走环境里配的代理 |
 
-## 它不做什么？
+## 已知限制
 
 - 没有删除类工具。也没有「改菜单名」：菜单名按语言走翻译，做成工具的话卡片会说改好了，英文界面却没变。
 - 预演是一句话描述，不是字段级 diff。
 - 每句话最多 `AI_MAX_TOOL_ROUNDS`（5）轮工具调用。native 引擎不做长会话的上下文压缩。
 - MCP 发起的写操作只在网页上确认，不接受 MCP 客户端代答。
 
-## 怎么测的？
+## 测试
 
 后端测试打真实测试库和真实 Redis。下表按 `def test_` 函数计数，参数化展开后条数更多。
 
@@ -178,7 +178,7 @@ X-Acting-User: <用户名>
 
 多数守卫在插件分册里都记了变异检验：拿掉那道检查，对应测试当场变红。Playwright 用例 `ai-chat-confirm.spec.ts`、`ai-chat-limit.spec.ts` 用 `page.route` 固定 SSE 返回，CI 不调用真实模型。
 
-## 代码在哪
+## 代码位置
 
 - [`plugin/ai/core/dispatcher.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/ai/core/dispatcher.py)：权限过滤、数据范围、二次确认、审计
 - [`plugin/ai/core/registry.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/ai/core/registry.py)：`@ai_tool`、从签名生成 schema、自动发现

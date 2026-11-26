@@ -7,7 +7,7 @@ sidebar:
 
 除了浏览器，仓库里还有两个客户端。`apps/desktop` 把同一份 web 构建产物装进 Electron，补上浏览器做不到的四件事：静默打印、通过原生助手进程接本地硬件、refresh token 由主进程托管、自动更新。每个 GitHub Release 都附带 Windows、macOS、Linux 三个平台的安装包。`apps/mobile` 是 Expo / React Native 原生 App，屏幕是单独写的，不是拿 WebView 套网页；请求客户端和语言包与 web 端共用。
 
-## 桌面端在哪下载？
+## 桌面端下载
 
 在 [GitHub Releases](https://github.com/yile2020/fastapi-react-admin/releases) 下载。每个版本包含：
 
@@ -23,7 +23,7 @@ sidebar:
 Windows 的 SmartScreen 会拦一次，点「更多信息 → 仍要运行」。macOS 的 Gatekeeper 会提示「已损坏」，右键 →「打开」即可，或执行 `xattr -dr com.apple.quarantine "/Applications/Admin Desktop.app"`。发版流水线已经把 `CSC_LINK`、`CSC_KEY_PASSWORD` 和 `APPLE_*` 这几个 secret 透传给了 electron-builder，在仓库里配上就能开启签名（macOS 还会公证），不用改流水线。不过这条路还没用真证书跑过。
 :::
 
-## 桌面外壳比浏览器多了什么？
+## 桌面外壳
 
 外壳（Electron 42）不含任何业务代码，页面就是 `apps/web` 的构建产物。渲染层通过 `window.desktop` 调主进程，一共六个命名空间：`app`、`config`、`auth`、`print`、`devices`、`updater`。IPC 契约在 `packages/platform/src/desktop/contract.ts`。
 
@@ -43,7 +43,7 @@ if (isDesktop()) {
 
 写外壳时实测到两点：`print()` 的 `pageSize` 单位是微米，`printToPDF()` 的单位却是英寸；开启 `preferCSSPageSize` 并写好 `@page` 后，60 × 40 mm 的标签实际输出 59.944 × 39.878 mm，偏差 0.09%。
 
-## 桌面端怎么自动更新？
+## 自动更新
 
 用的是 `electron-updater`。`config.json` 里填了 `updateUrl` 就用它，这是 generic 源，任何能列目录的静态 HTTP 服务都行，比如客户内网。没填就用打包时写进 `app-update.yml` 的源，也就是本仓库的 GitHub Releases。更新包自动下载，在应用退出时安装。`quitAndInstall(true, true)` 静默安装并自动重启；不带这两个参数的话，弹出来的是 NSIS 安装向导，停在那里等人点「下一步」。渲染层通过 `desktop().updater.check()`、`.on()`、`.quitAndInstall()` 驱动更新。打包后的 Windows / Linux 版由主进程自己定时检查（启动 30 秒后一次、之后每 4 小时，`autoUpdate: false` 关掉）；macOS 版未签名，不自动检查。
 
@@ -55,13 +55,13 @@ if (isDesktop()) {
 
 内网部署时，往静态目录放 `<版本>.exe`、对应的 `.blockmap` 和 `latest.yml`。`latest.yml` **必须最后放**，并且不能被缓存。`.blockmap` 用于差量下载，但第一次更新通常会回落成全量下载。
 
-## 安装包怎么出？
+## 安装包构建
 
 推一个 `v*` tag 就会触发 [`.github/workflows/release.yml`](https://github.com/yile2020/fastapi-react-admin/blob/main/.github/workflows/release.yml)。`prepare` job 先核对 tag、`apps/web/package.json` 的版本和后端 `__version__` 三者一致，再建**唯一一个**草稿 release。随后矩阵在 `windows-latest`、`macos-latest`、`ubuntu-latest` 上各自打包，每个平台只在自己的系统上出包。electron-builder 用 `--publish never`，产物由 `gh release upload` 上传，因为 electron-builder 自带的上传器曾经并发建出过两个草稿。草稿要有人先装一遍试过，再点发布。
 
 本地手动打包：先 `pnpm --filter web build`，再 `pnpm --filter @admin/desktop package`。桌面端自己的构建不会重新构建前端，漏了第一步，打出来的就是上一版界面，而且不报任何错。开发时先把 web dev server 起在 :8888，再跑 `pnpm desktop:dev`。
 
-## 移动端是什么？
+## 移动端
 
 `apps/mobile` 基于 Expo SDK 57、React Native 0.86 和 Expo Router，样式用 uniwind（Tailwind CSS v4 的 React Native 实现），组件来自 `react-native-reusables`。只出 Android 和 iOS，不出 web。
 
@@ -70,7 +70,7 @@ if (isDesktop()) {
 - **登录：** 密码和手机验证码两种方式，都要先过图形验证码；开了二次验证的账号第二步输动态码（被强制、还没绑定的人要先到网页端扫码绑定）。access token 存在 `expo-secure-store`（Keystore / Keychain），绝不放 `AsyncStorage`。refresh token 留在 httpOnly cookie 里：在 Android 上实测，React Native 自带的 cookie jar 会自动回传它，冷启动后依然有效。
 - **服务器地址在 App 里设置**，存在设备上。保存前会先探一次 `/auth/captcha`，确认这个地址确实是一个能连通的后端。颜色令牌与 web 端是同一份 `oklch()`，在 Android 上实测逐像素一致。
 
-## 移动端还没做什么？
+## 移动端限制
 
 - 只在 Android 上手工验收过（登录 → 权限门控 → 列表翻页 → 详情 → 删除确认 → toast）。较新的屏幕，比如手机验证码登录和公告附件，目前只过了 `tsc`、ESLint 和打包。**iOS 一次都没跑过。**
 - 移动端没有自动化测试。CI 的闸门是 `pnpm build`，其中包括 `expo export --platform android`，只能挡住打包阶段的失败。
@@ -80,7 +80,7 @@ if (isDesktop()) {
 
 本地跑起来：先 `pnpm --filter api dev:host`（后端绑 `0.0.0.0:8088`），再 `pnpm mobile:dev`，把打印出来的 `exp://…:8800` 地址填进 SDK 57 版的 Expo Go。
 
-## 有哪些开关？
+## 配置项
 
 | 端 | 在哪设 | 键 | 默认 | 说明 |
 |---|---|---|---|---|
@@ -93,7 +93,7 @@ if (isDesktop()) {
 | 桌面 | 同上 | `autoUpdate` | `true` | 主进程定时自动检查更新（Windows / Linux，启动 30 秒后一次、之后每 4 小时）；`false` = 不定时检查，手动检查不受影响 |
 | 移动 | App 里的服务器地址设置，存在设备上 | —— | 构建时的 `EXPO_PUBLIC_API_BASE`，没设是 `http://127.0.0.1:8088` | 保存前先探一次 `/auth/captcha` 确认连得通。`EXPO_PUBLIC_*` 是构建时替换的，打成安装包后只能在 App 里改 |
 
-## 代码在哪
+## 代码位置
 
 - [`apps/desktop/`](https://github.com/yile2020/fastapi-react-admin/tree/main/apps/desktop)：`src/main/`（窗口、`app://` 协议、`print.ts`、`updater.ts`、`auth.ts`、`devices/`）和 `electron-builder.yml`
 - [`packages/platform/src/desktop/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/desktop)：桥接契约、`isDesktop()` / `desktop()`、标签模板

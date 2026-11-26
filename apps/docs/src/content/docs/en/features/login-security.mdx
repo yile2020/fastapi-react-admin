@@ -17,7 +17,7 @@ For devices, idle timeouts and forced sign-out, see [Session management](/en/fea
 
 </details>
 
-## Where is it in the UI?
+## UI entry points
 
 - **Sign-in page** (`/sign-in`): everyone can open it.
 - **Profile** (`/profile`): change your password, bind a phone or authenticator, link third-party accounts, and review recent sign-ins.
@@ -27,7 +27,7 @@ For devices, idle timeouts and forced sign-out, see [Session management](/en/fea
 
 Password and two-factor resets require a **superuser**, regardless of menu permissions.
 
-## Which sign-in methods are there?
+## Sign-in methods
 
 | Method | Before you sign in |
 |---|---|
@@ -39,9 +39,9 @@ An admin-entered or imported phone number cannot be used for SMS sign-in until i
 
 There is no self-service password recovery: the sign-in page says "Ask an admin to reset your password".
 
-## How does two-factor (MFA) work?
+## Two-factor (MFA)
 
-### 1. Prepare the server key
+### 1. Prepare the key
 
 An administrator first sets `MFA_SECRET_KEY` in `apps/api/backend/.env` and restarts the API. It must be 64 hex characters; generate it with:
 
@@ -65,7 +65,7 @@ With a current code, you can also turn two-factor off or regenerate recovery cod
 Recovery codes are shown only once and each works once. Generating a new batch invalidates the previous batch. If you lose your authenticator, use an unused recovery code or ask a superuser to reset two-factor under Users.
 :::
 
-### 3. Require it for your team, if needed
+### 3. Require it team-wide
 
 Under **System → Config → Sign-in policy**, set **Require two-factor**:
 
@@ -77,7 +77,7 @@ Under **System → Config → Sign-in policy**, set **Require two-factor**:
 
 An unenrolled user must bind an authenticator during the next web sign-in before entering the system. Required users cannot turn it off. The mobile app accepts codes, but initial enrollment must be completed on the web.
 
-## What are the password rules?
+## Password rules
 
 | Rule | Default | Allowed range |
 |---|---|---|
@@ -96,7 +96,7 @@ Changing your own password, or having it reset by an admin, ends **every** sessi
 - After expiry, password and SMS sign-in are both refused (third-party sign-in does not check password age). The message says to change the password and sign in again, but the user can no longer sign in to do so; only a superuser can reset it under Users.
 :::
 
-## How many wrong passwords before a lockout?
+## Lockout
 
 By default, **5 consecutive failures lock an account for 5 minutes**. Across accounts, **30 failures from one IP lock it for 15 minutes**. Messages do not reveal whether an account exists or is locked.
 
@@ -106,15 +106,15 @@ Account thresholds are under **System → Config → Passwords & lockout**; per-
 
 <span id="what-does-a-signed-out-person-see"></span>
 
-## Manage signed-in devices
+## Signed-in devices
 
 Superusers view and revoke sessions under **Monitoring → Active sessions**. The [Session management guide](/en/features/login-sessions/) covers device limits, idle timeouts and each sign-out message.
 
-## What it does not do
+## Limitations
 
 - The only second factors are TOTP and recovery codes: no passkeys (WebAuthn), no hardware keys, and SMS is not offered as a second factor.
 - No self-service password recovery or self-registration (except third-party sign-in with auto-registration explicitly turned on).
-- The password expiry reminder is not shown in the web client yet, and an expired password cannot be changed by its owner; see [above](#what-are-the-password-rules).
+- The password expiry reminder is not shown in the web client yet, and an expired password cannot be changed by its owner; see [above](#password-rules).
 - Session operations use single-instance Redis Lua scripts; Redis Cluster has not been tested. See [Session management](/en/features/login-sessions/).
 
 <span id="which-settings-are-there"></span>
@@ -127,7 +127,7 @@ Superusers view and revoke sessions under **Monitoring → Active sessions**. Th
 
 <span id="try-it-on-the-demo"></span>
 
-## Configuration and development reference
+## Configuration
 
 - [Security configuration](/en/reference/security-config/): all settings, extension points, source links and existing test coverage.
-- [Try session management](/en/features/login-sessions/#try-it-on-the-demo): observe two sessions on the shared demo. Test MFA locally; the demo may not have a key configured.
+- [Try session management](/en/features/login-sessions/#try-the-demo): observe two sessions on the shared demo. Test MFA locally; the demo may not have a key configured.

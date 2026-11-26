@@ -12,7 +12,7 @@ fastapi-react-admin ships an approval workflow plugin (`plugin/workflow`): an ad
 
 <ProductShot src={shot} alt="Workflow definitions: form designer and flow tree" url="localhost:8888/workflow/definition" />
 
-## Where is it in the UI?
+## UI entry points
 
 | Screen | Path | Who | What it does |
 |---|---|---|---|
@@ -25,7 +25,7 @@ fastapi-react-admin ships an approval workflow plugin (`plugin/workflow`): an ad
 
 The approval center only requires a sign-in, not a permission code: approvers are often outside the request's data scope, and gating it by menu permission or data scope would stop people from opening their own tasks. What each person may see and do on each request is decided per request by the server's `capabilities()`.
 
-## What can a workflow definition contain?
+## Workflow definitions
 
 A definition is two JSON documents: a form schema and a flow model. Both are validated by Pydantic shapes in [`engine/schema.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/workflow/engine/schema.py) on publish, and stored as raw JSON.
 
@@ -47,7 +47,7 @@ This is an excerpt of the seeded "请假" (leave) sample from [`sql/postgresql/i
 
 The designer edits a draft (saved without validation); **publish** validates it and copies it into a new version row. In-flight requests keep the snapshot they started with, so editing or disabling a definition never changes them. A definition that already has requests cannot be deleted, only disabled.
 
-## Who approves a step?
+## Approvers
 
 Each approval node has an assignee rule ([`engine/assignee.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/workflow/engine/assignee.py)):
 
@@ -62,11 +62,11 @@ Each approval node has an assignee rule ([`engine/assignee.py`](https://github.c
 
 Except for the `initiator` rule, the initiator is always removed from the result, so nobody approves their own request. If a rule resolves to nobody, the node's `onEmpty` decides: `reject` (default, with the reason in the history), `skip`, or `admin` (superusers, again minus the initiator). Nothing is silently approved.
 
-## How do or-sign, co-sign and sequential approval differ?
+## Approval modes
 
 `mode: any` (or-sign) passes on the first approval and cancels the other tasks. `mode: all` (co-sign) needs everyone; one rejection ends the request. `mode: seq` goes one person at a time; the order is fixed when the request enters the node, so later role changes do not affect it.
 
-## What can an approver do besides approve and reject?
+## Approver actions
 
 | Action | Behaviour |
 |---|---|
@@ -78,7 +78,7 @@ Except for the `initiator` rule, the initiator is always removed from the result
 
 The initiator can **withdraw** a running request and **remind** the current approvers at most once every 5 minutes. Users with `workflow:instance:terminate` can terminate and users with `workflow:instance:reassign` can reassign a stuck task. A node's `actions` list narrows the optional set: `null` inherits transfer / CC / send back / add approver, `[]` leaves only approve and reject.
 
-## What happens when an approver times out?
+## Timeouts
 
 An approval node can set `timeout: {hours, action}` with `hours` from 1 to 720 and `action` one of `remind`, `approve` or `reject`. The clock starts when the task reaches that person, so a transfer or the next person in a sequential step starts a fresh clock. Hours are calendar hours; there is no working-day calendar.
 
@@ -88,38 +88,38 @@ The Celery task `workflow.handle_timeouts` scans every 5 minutes (seeded as cron
 If Celery beat is not running, or the seeded `workflow.handle_timeouts` entry under **Scheduler → Tasks** is disabled, timeout settings still save but nothing ever fires.
 :::
 
-## Drafts, urgent flag and read receipts
+## Drafts, urgency, read receipts
 
 - **Drafts** are stored server-side (`wf_draft`, one per user per workflow, up to 200 KB, not validated). The submit drawer autosaves 1.5 s after you stop typing; the draft is deleted in the same transaction that creates the request, so a failed submission keeps it.
 - **Urgent** only changes sort order: urgent requests come first in the approver's to-do list. The flow is unchanged.
 - **Read**: the first time a current approver opens the detail is recorded, and the initiator sees it.
 
-## How does handover work when someone leaves?
+## Handover
 
 **Instance monitor → Handover** moves every pending task from one person to another. The "from" list is built from people who currently hold tasks — including disabled and deleted accounts — because the normal user picker only lists active users, which would hide exactly the person who left. Each task is reassigned in its own transaction, the result lists a reason for any task that could not move, and a repeated click with the same idempotency key does not move anything twice.
 
-## Who can see which fields?
+## Field permissions
 
 Each node sets `hidden` / `readonly` / `editable` per field (start node defaults to editable, approval nodes to read-only). This is enforced on the server: the detail API removes hidden fields from the schema, the data and the before/after values in the history. Hidden values are also kept out of list summaries, branch records ("took the large-amount branch" reveals the amount range) and the path preview; publishing a condition on a hidden field gives a `CONDITION_VAR_HIDDEN` warning.
 
-## Is it safe when two people click at once?
+## Concurrent actions
 
 Every state change first claims the request with `UPDATE wf_instance SET version = version + 1 WHERE id = ? AND version = ? AND status = 'running'` and retries the whole transaction up to 3 times. Each action carries an idempotency key, replayed only for the same user. Rejected actions are still recorded, in a separate transaction.
 
-## Connecting your own business data
+## Connecting business tables
 
 Form approvals need no code. For a business table, implement `WorkflowBizHandler` in [`handler.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/workflow/handler.py), call `register_handler()`, and start the request with `runtime_service.start_for_biz()` inside your own transaction. `on_finished` runs inside the approval transaction and should only update business state. Five webhook events (`workflow.instance.started` / `approved` / `rejected` / `withdrawn` / `terminated`) are available through the [open API](/en/features/open-api/) and deliberately omit form contents. Approval notifications are routed like any other kind — see [Notifications](/en/features/notifications/).
 
 The plugin also has optional AI features (pre-review, generating a definition from one sentence, filling the form from a document, approving from chat, and data-gated auto-approval on or-sign nodes); see [AI assistant](/en/features/ai-assistant/).
 
-## Limits
+## Limitations
 
 - No parallel branches: the flow is a tree, so a request is always at exactly one node.
 - The designer's condition editor edits one level of "all"; hand-written nested `any` conditions are kept but not editable in the UI.
 - Form fields are reordered with up / down buttons, not drag and drop.
 - Timeouts count calendar hours, not working days.
 
-## Which settings are there?
+## Settings
 
 Most approval behaviour is configured **per workflow and per node** in the designer (approval mode, timeout reminders and auto-actions, field permissions, AI nodes), not as global switches. There is one global switch, in `.env`; restart the backend after changing it:
 
@@ -127,14 +127,14 @@ Most approval behaviour is configured **per workflow and per node** in the desig
 |---|---|---|
 | `WORKFLOW_AI_APPROVE_ENABLED` | `true` | Master switch for AI auto-approval. `false` stops AI auto-approval in every workflow while AI pre-review keeps giving suggestions. Even when on it only *allows* it: the node has to enable it, and there must be enough data for that workflow × model before the AI actually approves on someone's behalf |
 
-## Where it lives in the code
+## Source code
 
 - [`apps/api/backend/plugin/workflow/engine/`](https://github.com/yile2020/fastapi-react-admin/tree/main/apps/api/backend/plugin/workflow/engine) — shapes, tree navigation and publish checks (`flow.py`), form rules and field permissions (`form.py`), assignee rules, path preview (`simulate.py`)
 - [`service/runtime_service.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/workflow/service/runtime_service.py) — every action, claiming, the capability list; [`service/query_service.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/workflow/service/query_service.py) — inbox and per-viewer detail; [`service/timeout_service.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/workflow/service/timeout_service.py)
 - Frontend: [`packages/platform/src/pages/workflow/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/workflow) (form renderer, flow view, detail drawer) plus `workflow-definition/`, `workflow-inbox/`, `workflow-monitor/`
 - Design notes and pitfalls: [`plugin/workflow/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/workflow/AGENTS.md), [`pages/workflow/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/workflow/AGENTS.md)
 
-## How it is tested
+## Tests
 
 [`plugin/workflow/tests/`](https://github.com/yile2020/fastapi-react-admin/tree/main/apps/api/backend/plugin/workflow/tests) collects 167 pytest cases, most of them running against a real test database and Redis (88 for the engine and actions, 79 for the AI features, of which 14 call a real model and are skipped without credentials). Some examples:
 
@@ -144,6 +144,6 @@ Most approval behaviour is configured **per workflow and per node** in the desig
 
 The notes record which tests were mutation-checked (fix reverted, test turns red). The browser suite [`workflow.spec.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/tests/workflow.spec.ts) has 14 Playwright tests covering submit → approve, send back and resubmit, reassign, take back, add approver, drafts, urgent and read receipts. CI runs the backend suite on PostgreSQL and SQL Server; MySQL has no CI job.
 
-## Try it in the demo
+## Try the demo
 
 Sign in at [fra.wubunan.com](https://fra.wubunan.com/sign-in) with `admin` / `123456`. **Approvals → Workflow definitions** opens the designer (Basics → Form → Workflow designer) with the seeded "请假" leave sample, **Approvals → Approval center** is where requests are submitted and handled, and **Approvals → Instance monitor** has terminate, reassign and handover.

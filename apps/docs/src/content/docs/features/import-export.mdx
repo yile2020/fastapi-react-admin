@@ -12,7 +12,7 @@ import ProductShot from '../../../components/ProductShot.astro'
 
 <ProductShot src={shot} alt="部门导入：提交前的预览" url="localhost:8888/system/dept" />
 
-## 在界面上哪里找？
+## 界面入口
 
 | 列表页 | 导出（权限码） | 导入（权限码） |
 |---|---|---|
@@ -25,7 +25,7 @@ import ProductShot from '../../../components/ProductShot.astro'
 
 种子数据里这些导入导出按钮**没有授给任何非超管角色**，要用的角色得在「角色管理」里勾上。业务数据的列表能勾选行、导出选中的；审计日志只读，只按筛选导出；树形列表没有多选。
 
-## 导出能选什么？出来的文件长什么样？
+## 导出选项与文件
 
 「导出」按钮是一个菜单，两项：
 
@@ -40,7 +40,7 @@ import ProductShot from '../../../components/ProductShot.astro'
 - 行按 ID 倒序（最新的在前），部门按树的顺序。
 - 超过 2^53−1 的整数（雪花 ID）写成文本，否则 Excel 会把最后几位变成 0。
 
-## 数据量大了会怎样？
+## 大数据量导出
 
 | 行数 | 行为 |
 |---|---|
@@ -53,7 +53,7 @@ import ProductShot from '../../../components/ProductShot.astro'
 
 「个人中心 → 导出记录」只列自己的：排队中 / 进行中（带进度条，每 3 秒刷新）/ 完成 / 失败（带原因）/ 已过期。文件存在默认存储的私有区，**72 小时后删除**，记录保留 90 天。清理任务 `maintenance.purge_expired_exports` 每小时第 20 分跑一次，顺带把卡住超过半小时的导出记成失败。
 
-## 什么是公式注入？怎么防的？
+## 公式注入防护
 
 导出的单元格如果以 `=`、`+`、`-`、`@` 开头，Excel 打开时会把它当公式执行 —— 用户名填成 `=HYPERLINK(…)` 的人，就能让导出这份表的管理员点开一个链接。判定时会先跳过开头的空格、全角空格、不换行空格等，全角的 `＝ ＋ － ＠` 和制表符、回车、换行、`\0` 也算。
 
@@ -62,7 +62,7 @@ import ProductShot from '../../../components/ProductShot.astro'
 
 另外，XML 不允许的控制字符换成 `�`，超过 32767 字符的文本截断（这是 Excel 单元格的上限）。
 
-## 导入的模板和预览是怎样的？
+## 导入模板与预览
 
 **模板**是一个 xlsx：第一个工作表只有表头，第二个工作表「说明」逐列写着是否必填、说明和可选值。有固定选项的列带**下拉**：状态这类枚举、导入人看得到的部门编码、角色编码、字典类型编码，每列最多 500 项。选项短的直接写在下拉里，长的或带逗号的放进一个隐藏的工作表。下拉是「警告」级别：填了列表外的值 Excel 只提示、不拦，最终以后端校验为准。
 
@@ -72,7 +72,7 @@ import ProductShot from '../../../components/ProductShot.astro'
 
 **提交**凭预览给的一次性令牌：30 分钟内有效，只能用一次，绑定了导入人和资源。提交时所有行会**再校验一遍**，因为预览之后库里的数据可能变了。
 
-## 三种导入模式有什么区别？
+## 三种导入模式
 
 | 模式 | 文件里的这条在系统里已经有了 | 没有 |
 |---|---|---|
@@ -86,11 +86,11 @@ import ProductShot from '../../../components/ProductShot.astro'
 
 有失败的行时可以下载**错误报告**：原表的内容加上「行号」「原因」两列，改好之后直接重新导入。报告只有导入人自己能下载，有效期和预览令牌一样。
 
-## 一份文件怎么建出整棵部门树？
+## 导入部门树
 
 每行填自己的部门编码和**上级部门编码**（`parent_code`）。上级可以是系统里已有、并且导入人看得到的部门，也可以是**同一个文件里的另一行**，前后顺序随意 —— 提交时按层级从上往下写。环检测按「导入之后的树」算：同一个文件里把 A 挪到 B 下、B 挪出 A，不会被误判成环；真的成环会指出来。上级那一行本身有错时，挂在它下面的行也会被标出来。
 
-## 有哪些开关？
+## 配置项
 
 导入导出没有放进「参数配置」页，全部在 `.env` 里，改完重启后端（worker 也要重启）：
 
@@ -108,7 +108,7 @@ import ProductShot from '../../../components/ProductShot.astro'
 
 定义在 [`core/conf.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/core/conf.py) 的导入、导出两段。
 
-## 给自己的列表页加导入导出
+## 列表页接入
 
 **导出**：
 
@@ -122,7 +122,7 @@ Celery worker 通过 `load_dataio_modules()` 加载这些定义，所以插件�
 
 **导入**：`register_import(ImportSpec(...))` 声明列、匹配键（`key_of`）、校验、写入和支持的模式；加 `/import/template`、`/import/preview`、`/import/commit` 三个路由；页面上放 `<ImportSheet>`。逐步写法和踩过的坑在 [`common/dataio/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/common/dataio/AGENTS.md)。
 
-## 它不做什么
+## 已知限制
 
 - 不导入 `.xls` 和 csv；单元格里的公式不认。
 - 导入时留空的单元格不能把字段清空；不能用导入把一个已有部门挪成顶级部门。
@@ -137,14 +137,14 @@ Celery worker 通过 `load_dataio_modules()` 加载这些定义，所以插件�
 - 部门模板里 `parent_code` 的说明是「留空是顶级部门」，但在「新增并更新 / 只更新」模式下，留空的意思是**保留原来的上级**。
 - 导入弹窗里三种模式的说明写的是按「编码」匹配；字典项实际按「字典类型编码 + 标签」匹配（字典页自己的说明写对了）。
 
-## 代码在哪
+## 代码位置
 
 - 导出：[`common/dataio/exporting.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/common/dataio/exporting.py)（注册表）· [`export_service.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/service/export_service.py) · [`common/dataio/cells.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/common/dataio/cells.py)（公式注入、单元格清洗）· [`writers.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/common/dataio/writers.py) · 后台任务 [`tasks/export/tasks.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/task/tasks/export/tasks.py)
 - 导入：[`common/dataio/importing.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/common/dataio/importing.py) · [`import_service.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/service/import_service.py) · xlsx 读写 [`utils/excel_ops.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/utils/excel_ops.py)
 - 各资源的定义：[`app/admin/dataio.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/dataio.py)（用户、部门、日志）· [`plugin/dict/dataio.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/dict/dataio.py)
 - 前端：[`pages/_shared/data-io/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/_shared/data-io)（导出按钮、导入抽屉）· [`profile/exports-panel.tsx`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/profile/exports-panel.tsx)
 
-## 怎么测的
+## 测试
 
 后端连真实的数据库：
 
@@ -155,6 +155,6 @@ Celery worker 通过 `load_dataio_modules()` 加载这些定义，所以插件�
 
 浏览器端（Playwright）：[`data-io.spec.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/tests/data-io.spec.ts)（导出的 CSV 就是当前筛选的那一批；导出记录里能再下载一次；一份文件建整棵部门树，下级写在上级前面也行）、[`user-import.spec.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/tests/user-import.spec.ts)（预览分别指出三类问题、提交只建干净的行；同一个令牌不能提交两次；非 xlsx 文件被挡住并说明原因）。
 
-## 在演示站里试试
+## 在线体验
 
 [在线演示](https://fra.wubunan.com/sign-in)（`admin` / `123456`）：打开「系统管理 → 部门管理」，点「导入」下载模板，填两三行、其中一行的上级写成同一个文件里的另一行，上传后看预览怎么标出新增和问题。导出可以在「日志管理 → 登录日志」里试，按筛选导出一份 csv。演示站是共用的，导入的部门别人也看得到，试完请删掉。

@@ -1,5 +1,5 @@
 ---
-title: Monitoring and health checks
+title: Monitoring
 description: Server monitoring (CPU, memory, disks, the process) and Redis monitoring (memory, keys, ops/s, command stats) show the present only and store no history; one unauthenticated health-check URL reports the API, database, Redis, scheduler and worker, 200 when all are fine and 503 otherwise.
 sidebar:
   order: 2
@@ -12,7 +12,7 @@ The admin ships two monitoring pages. **Server** shows the CPU, memory and disks
 
 <ProductShot src={shot} alt="Redis monitoring" url="localhost:8888/monitor/redis" />
 
-## Where is it in the UI?
+## UI entry points
 
 | Screen | Path | Who |
 |---|---|---|
@@ -24,7 +24,7 @@ The admin ships two monitoring pages. **Server** shows the CPU, memory and disks
 
 Monitoring pages and endpoints are guarded by **superuser**, with no permission codes: granting these menus to an ordinary role does not let it open them.
 
-## What do the two monitoring pages show?
+## The two monitoring pages
 
 **Server**:
 
@@ -47,7 +47,7 @@ Monitoring pages and endpoints are guarded by **superuser**, with no permission 
 
 Trend lines keep at most 40 points and vanish when the page closes. These pages answer "how is it right now"; they are not a monitoring system. For history and alerts, use a dedicated system such as Prometheus, Zabbix or your cloud's monitoring.
 
-## What does the health check return?
+## Health check endpoint
 
 `GET /api/health/status` needs no sign-in, is not rate-limited and is not recorded in the operation log. It checks five things concurrently:
 
@@ -65,11 +65,11 @@ A heartbeat older than 180 seconds is `stale`, one never written is `missing`, a
 
 The body ends with `version` and `commit` (a 7-character commit hash), so you can tell which release is live; they never affect the 200 / 503 result, and `commit` is `null` when no commit was baked into the image. The frontend's own copy is in `/version.json`, and after signing in, **Help → About** in the top bar shows both side by side and flags a mismatch.
 
-Which address external monitoring should probe, and why not `/healthz`, is in [Deploying to a server](/en/getting-started/deployment/#what-should-external-monitoring-check). Container orchestration uses a separate `/health/ready` that checks only the database and Redis.
+Which address external monitoring should probe, and why not `/healthz`, is in [Deployment](/en/getting-started/deployment/#external-monitoring). Container orchestration uses a separate `/health/ready` that checks only the database and Redis.
 
 The dashboard's **Service status** card reads the same checks, plus how many sessions are online on web, desktop and mobile; it does not poll, and re-opening it within 20 seconds uses the cached result.
 
-## Which settings are there?
+## Settings
 
 All in `.env`; restart the backend after changing:
 
@@ -80,24 +80,24 @@ All in `.env`; restart the backend after changing:
 
 The monitoring pages' refresh interval is chosen on the page and needs no configuration.
 
-## What it does not do
+## Limitations
 
 - Server monitoring describes **the machine (or container) running the backend API**, not the ones running the database or Redis. The IP is the local address used for an outgoing UDP connection, falling back to `127.0.0.1`.
 - No history, no alerts.
 - If beat is stuck while its loop keeps turning, the scheduler heartbeat may still be written and the health check won't notice.
 - The two monitoring pages have no backend or E2E tests; the health check does.
 
-## Where is the code?
+## Source code
 
 - Monitoring endpoints: [`api/v1/monitor/server.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/api/v1/monitor/server.py) · [`redis.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/api/v1/monitor/redis.py)
 - Health check: [`core/registrar.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/core/registrar.py) · scheduler heartbeat in `tick` of [`app/task/utils/schedulers.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/task/utils/schedulers.py) · worker heartbeat task [`tasks/health/`](https://github.com/yile2020/fastapi-react-admin/tree/main/apps/api/backend/app/task/tasks/health) · nginx fallback [`apps/web/nginx.conf`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/nginx.conf)
 - Frontend: [`pages/monitor-server/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/monitor-server) · [`pages/monitor-redis/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/monitor-redis) · shared refresh and trends [`_shared/monitor.tsx`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/_shared/monitor.tsx) · dashboard card [`dashboard/cards/services.tsx`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/dashboard/cards/services.tsx)
 
-## How is it tested?
+## Tests
 
 - [`security/test_health.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/tests/security/test_health.py) (23 tests): no token needed; a down scheduler makes the worker `unknown`; worker start-up leaves no connection bound to a throwaway event loop; and more.
 - E2E covers only the dashboard's Service status card (five rows plus a summary, [`dashboard-personalize.spec.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/tests/dashboard-personalize.spec.ts)).
 
-## Try it on the demo
+## Try the demo
 
 On the [live demo](https://fra.wubunan.com/sign-in) (`admin` / `123456`), open Monitoring → Redis, set refresh to 5 seconds and watch the ops/s trend grow; switch to another tab and back, and there are no samples for the time you were away. Open `https://fra.wubunan.com/api/health/status` directly in the browser for the health check.

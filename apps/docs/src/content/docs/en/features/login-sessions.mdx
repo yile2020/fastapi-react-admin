@@ -8,7 +8,7 @@ import ProductShot from '../../../../components/ProductShot.astro'
 
 Every sign-in creates a server-side session. Use this page to see who is signed in, end a session and understand when a sign-in expires.
 
-## View and end a session
+## Viewing and ending sessions
 
 **Entry:** Monitoring → Active sessions (`/monitor/online`). Only **superusers** can list sessions and force sign-out; granting the menu to an ordinary role does not grant these API operations.
 
@@ -25,7 +25,7 @@ Every sign-in creates a server-side session. Use this page to see who is signed 
 
 </details>
 
-## Set timeouts and device limits
+## Timeouts and device limits
 
 Each sign-in creates a session on the server, and its ID stays the same until it ends. The client says which kind it is when signing in, and each kind has its own rules:
 
@@ -42,7 +42,7 @@ Each sign-in creates a session on the server, and its ID stays the same until it
 
 All of these are under Config → Sessions; the over-limit behaviour can also be "refuse the new sign-in". For single-device sign-in, set the limit to 1. Changes apply to **later** sign-ins only; existing sessions keep the rules they started with.
 
-## What does a signed-out person see?
+## Forced sign-out notice
 
 When a session ends the server records why; the next request from that person gets a 401 carrying the reason, and the page goes back to the sign-in screen with the message:
 
@@ -56,7 +56,7 @@ When a session ends the server records why; the next request from that person ge
 | Account disabled or deleted | Your account has been disabled, please contact the administrator |
 | Refresh token reused | Your sign-in credentials were used more than once, so you were signed out; change your password if this wasn't you |
 
-## How activity and token renewal work
+## Activity and token renewal
 
 <details>
 <summary>Activity reporting and refresh-token rotation</summary>
@@ -69,7 +69,7 @@ The access token lasts 30 minutes and is renewed with the refresh token, which i
 
 Session operations use Lua scripts for a single Redis instance. Redis Cluster has not been tested.
 
-## Try it on the demo
+## Try the demo
 
 On the [live demo](https://fra.wubunan.com/sign-in) (`admin` / `123456`), sign in from two browsers (or a normal and a private window). Under Monitoring → Active sessions you will see both sessions with their client type, browser and last activity. Force **your own other session** to sign out and that window goes back to the sign-in page with the reason. Everyone shares `admin` on the demo, so don't sign out other people's sessions; the demo is also not guaranteed to have `MFA_SECRET_KEY` set, so try two-factor locally.
 

@@ -1,5 +1,5 @@
 ---
-title: "数据库：PostgreSQL / SQL Server / MySQL"
+title: 数据库支持
 description: 同一套代码、同一条 Alembic 迁移链支持 PostgreSQL（默认）、SQL Server、MySQL，改 DATABASE_TYPE 即可切换。
 sidebar:
   order: 8
@@ -7,7 +7,7 @@ sidebar:
 
 后端可以跑在 PostgreSQL、SQL Server 或 MySQL 上：模型是同一套，Alembic 迁移链是同一条，三种库各有一份初始数据。选哪个由 `apps/api/backend/.env` 里的 `DATABASE_TYPE` 决定，默认 PostgreSQL。后端 fork 自 [fastapi-best-architecture](https://github.com/fastapi-practices/fastapi_best_architecture)（FBA），上游支持 PostgreSQL 和 MySQL。SQL Server 支持是本仓库加的，上游明确不合并，所以这是一次永久分叉。
 
-## 支持哪几种库？各自验证到什么程度？
+## 支持的数据库
 
 | | 驱动 | 本地怎么起 | 验证情况 |
 |---|---|---|---|
@@ -21,7 +21,7 @@ sidebar:
 本仓库只实测过 SQL Server 2022。2016 以下的版本 T-SQL 有差异（`OFFSET … FETCH`、筛选唯一索引），要用的话先自己验一遍。
 :::
 
-## 怎么切到 SQL Server？
+## 切换到 SQL Server
 
 1. 起容器：`docker compose -f docker-compose.dev.yml --profile sqlserver up -d mssql`。
 2. **在宿主机上**装 [Microsoft ODBC Driver 18](https://learn.microsoft.com/sql/connect/odbc/download-odbc-driver-for-sql-server)。后端走 `aioodbc`，容器里的那份驱动不算数。不装的表现是：库起来了，后端一连就报 `Can't open lib ... ODBC Driver 18`。
@@ -39,7 +39,7 @@ sidebar:
 
 `DATABASE_DRIVER`（默认 `ODBC Driver 18 for SQL Server`）要和 `odbcinst -q -d` 列出来的名字一致。生产镜像 `apps/api/Dockerfile.prod` 里装了 `msodbcsql18`，所以三种库用的是同一个镜像。worker / beat 也离不开它：Celery 的 result backend 走的是 `mssql+pyodbc`。
 
-## 怎么切到 MySQL？
+## 切换到 MySQL
 
 把 `DATABASE_TYPE` 改成 `'mysql'`、`DATABASE_PORT` 改成 `3306`，主机和账号指向你的 MySQL 8.x，然后跑 `pnpm db:init`。建库语句是 `CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`（字符集取 `DATABASE_CHARSET`，默认 `utf8mb4`）。
 
@@ -47,7 +47,7 @@ sidebar:
 `DATABASE_PK_MODE` 必须保持 `'snowflake'`。三种库的初始数据都只有雪花 ID 版本，改成 `autoincrement` 后 `fba init` 找不到种子文件，会**一声不响地跳过**：表建好了，`admin` 账号却没有。另外，`pnpm db:init` 会先删库再重建。
 :::
 
-## 支持 SQL Server 要解决哪些问题？
+## SQL Server 适配
 
 下面这些在本地默认的 PostgreSQL 上都测不出来，只有 CI 的 `pytest · SQL Server` 能拦住。
 
@@ -64,13 +64,13 @@ sidebar:
 
 连接串是 `mssql+aioodbc`，带 `LongAsMax=Yes`，保证 `NVARCHAR(MAX)` / `VARBINARY(MAX)` 不被截断。
 
-## 另外两种库要注意什么？
+## PostgreSQL 与 MySQL
 
 - **PostgreSQL** 里一条语句失败，整个事务就作废了。所以「执行，已经做过就忽略」这类迁移步骤要包在 SAVEPOINT 里。到了 SQL Server，回滚 SAVEPOINT 反而会失败，只能用普通的 `suppress`。`c0000000comments` 迁移里的 `_tolerate_already_applied()` 两边都照顾到了。PostgreSQL 那个 CI job 会在空库上跑 `alembic upgrade c0000000comments`，专门把这条分支走一遍。
 - **MySQL** 的 `DATETIME` 默认只精确到秒。回收站「还原」按 `deleted_time` 相等来认「同一次删除」解开的关联，精度只到秒时，同一秒内手动移除的附件也被挂了回去（issue #132）。现在 `TimeZone` 在 MySQL 上映射为 `DATETIME(6)`，已有的库由迁移 `q0000000mysqldt` 升上来。`MODIFY` 会把整列重新定义，没写上的 `NOT NULL` 和注释会被静默丢掉，所以这条迁移先从 `information_schema` 读出可空性和注释，再原样写回去。
 - **数据迁移**不用任何方言专属的 upsert（`MERGE` / `ON CONFLICT` / `INSERT IGNORE`），而是先按业务键（`sys_menu.name`、`sys_role.code`）查一遍在不在，再决定插不插。三种库的种子 ID 本来就不同（PostgreSQL 的角色在 `4000000000000000…` 段，另两个在 `3000000000000000…` 段）。
 
-## 迁移怎么用？
+## 迁移用法
 
 ```bash
 pnpm db:revision '加 xxx 列'   # 改完模型生成迁移（--autogenerate），提交前要读一遍
@@ -81,7 +81,7 @@ pnpm db:history                # 看整条链
 
 新库走 `pnpm db:init`（按模型建表、灌种子、`alembic stamp head`），不靠重放迁移。基线 `b0000000baseline` 刻意是空的，唯一的真相源仍然是模型，所以整条链**不能**从空库重放，这是设计如此。生产上由一次性的 `migrate` 容器先跑 `alembic upgrade head`，跑完才起 API 和 worker。`ENVIRONMENT=prod` 时，库不在 head 应用就拒绝启动。详见[部署](/getting-started/deployment/)。
 
-## 有哪些开关？
+## 配置项
 
 数据库连接只在 `.env` 里配，改完重启后端和 worker（模板见 [`.env.example`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/.env.example)）：
 
@@ -98,7 +98,7 @@ pnpm db:history                # 看整条链
 | `DATABASE_SOURCES` | `{}` | 额外的数据源，如 `{"read": "postgresql+asyncpg://…"}`；名字不能是空或 `default` |
 | `DATABASE_ECHO` · `DATABASE_POOL_ECHO` | `false` | 打印 SQL / 连接池日志，排查时临时打开 |
 
-## 怎么测的
+## 测试
 
 [`app/task/tests/test_migrations.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/task/tests/test_migrations.py) 里的守卫：
 
@@ -113,7 +113,7 @@ pnpm db:history                # 看整条链
 
 [`backend/tests/`](https://github.com/yile2020/fastapi-react-admin/tree/main/apps/api/backend/tests) 下，`test_seed_dialects.py` 核对三份种子的表、每张表的行数和列清单一致，并检查关联表引用的 ID 确实存在。`test_timezone_type.py` 为三种方言编译时间列的 DDL，不需要连 MySQL。
 
-## 代码在哪
+## 代码位置
 
 - [`apps/api/backend/database/db.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/database/db.py)：按方言拼连接串
 - [`apps/api/backend/common/model.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/common/model.py)：`UniversalStr`、`UniversalText`、`TimeZone`、`id_key`

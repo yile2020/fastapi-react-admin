@@ -12,7 +12,7 @@ import ProductShot from '../../../components/ProductShot.astro'
 
 <ProductShot src={shot} alt="插件管理" url="localhost:8888/system/plugin" />
 
-## 在界面上哪里找？
+## 界面入口
 
 | 入口 | 路径 | 谁能用 | 做什么 |
 |---|---|---|---|
@@ -21,7 +21,7 @@ import ProductShot from '../../../components/ProductShot.astro'
 
 插件管理的所有接口按**超级管理员**判，不用权限码。
 
-## 内置了哪些插件？
+## 内置插件
 
 | 插件 | 是什么 | 类型 | 依赖 |
 |---|---|---|---|
@@ -38,7 +38,7 @@ import ProductShot from '../../../components/ProductShot.astro'
 
 **扩展型**插件把路由并进已有的应用（比如 `config` 的接口落在 `/api/v1/sys/configs`），**独立路由型**插件自带一组路由。插件管理页上会把声明的前缀和实际挂载的地址都列出来。
 
-## `plugin.toml` 里写什么？
+## `plugin.toml` 字段
 
 ```toml
 [plugin]
@@ -67,7 +67,7 @@ WORKFLOW_AI_APPROVE_ENABLED = true
 - **`[settings]` 怎么进到 `settings`**：优先级是进程环境变量 > `.env` > `plugin.toml`。但只写在 `plugin.toml` 里、没在 `core/conf.py` 声明的键是「额外字段」，**容器的环境变量覆盖不了它** —— 所以内置插件的每个配置项都在 `conf.py` 里另外声明了一遍（只声明类型、不给默认值）。反过来，`conf.py` 里**带了默认值**的键，`plugin.toml` 里写的值会被忽略。
 - 插件目录里的 `requirements.txt` 会用 `uv pip` 装上，每次后端启动也会检查一遍；`.env.example` 在安装时追加进 `.env`。
 
-## 怎么安装、卸载、停用？
+## 安装、卸载与停用
 
 **命令行安装**（只能在开发环境）：
 
@@ -87,7 +87,7 @@ fba add --path ./my_plugin.zip --no-sql # 不建表、不跑初始化 SQL
 - 插件的启动钩子（`setup` / `lifespan`）只在启动时对已启用的插件执行，这部分要重启才生效；新安装的插件的路由也要重启后才有。
 - 停用**不会隐藏菜单**：侧边栏里那几项还在，点进去接口报错。
 
-## 插件能挂进哪些扩展点？
+## 扩展点
 
 启动时扫描所有插件目录下的这些文件名，有就加载：
 
@@ -95,11 +95,11 @@ fba add --path ./my_plugin.zip --no-sql # 不建表、不跑初始化 SQL
 |---|---|---|
 | `hooks.py` | `setup(app)`、`lifespan`、`otel(app)` 三个钩子 | `ai` |
 | `notification_kinds.py` | 通知类型（能走哪些渠道、默认策略），见[消息与通知](/features/notifications/) | `notice`、`open`、`workflow` |
-| `data_change.py` | 数据变更记录的登记，见[日志与审计](/features/audit-logs/#给自己的表接入数据变更记录) | `config`、`oauth2` |
-| `dataio.py` | 导入导出资源，见[导入导出](/features/import-export/#给自己的列表页加导入导出) | `dict`、`notice` |
+| `data_change.py` | 数据变更记录的登记，见[日志与审计](/features/audit-logs/#接入自己的表) | `config`、`oauth2` |
+| `dataio.py` | 导入导出资源，见[导入导出](/features/import-export/#列表页接入) | `dict`、`notice` |
 | `webhook_events.py` | 能力开放的 Webhook 事件 | `workflow` |
 | `sms_templates.py` · `sms_providers.py` | 短信业务模板 · 短信厂商 | `workflow`（模板） |
-| `ai_tools.py` | AI 助手能调用的工具，见 [AI 助手](/features/ai-assistant/#内置了哪些工具怎么加一个) | `workflow` |
+| `ai_tools.py` | AI 助手能调用的工具，见 [AI 助手](/features/ai-assistant/#内置工具) | `workflow` |
 
 这些扫描**不看插件是否启用**：停用的插件声明的通知类型、导入导出资源照样登记着，只是接口调不通。
 
@@ -112,9 +112,9 @@ fba add --path ./my_plugin.zip --no-sql # 不建表、不跑初始化 SQL
 3. 在 `apps/web/src/lib/page-registry.tsx` 里登记「路由 → 组件」（多页签靠它挂载页面）
 4. 插件的初始化 SQL 里写好菜单行
 
-菜单的路径在前端找不到对应路由时，侧边栏会跳过它、开发时在控制台警告。完整的「加一个页面」流程见[从零加一个业务模块](/guides/first-module/)。
+菜单的路径在前端找不到对应路由时，侧边栏会跳过它、开发时在控制台警告。完整的「加一个页面」流程见[新增业务模块](/guides/first-module/)。
 
-## 它不做什么
+## 已知限制
 
 - 插件管理页上的安装 / 卸载不建表、不跑 SQL；生产环境不能在页面上装插件。
 - 停用插件不会隐藏它的菜单，停用后调用它的接口返回 500 而不是更合适的状态码。
@@ -123,19 +123,19 @@ fba add --path ./my_plugin.zip --no-sql # 不建表、不跑初始化 SQL
 - `ai`、`sms`、`workflow` 三个内置插件没有 `README.md`，从页面上下载它们的 zip 再拿去安装，会过不了「必须有 README」的检查。
 - 插件只有后端的约定；前端页面要按上面四步手工接。
 
-## 代码在哪
+## 代码位置
 
 - 插件加载：[`plugin/core.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/core.py)（依赖与必装检查）· [`router.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/router.py)（路由注入）· [`validator.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/validator.py)（`plugin.toml` 校验）· [`settings_source.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/settings_source.py) · [`status.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/status.py)（启停检查）· [`hooks.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/hooks.py)
 - 安装：[`plugin/installer.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/installer.py) · 命令行 [`cli.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/cli.py) · 插件管理接口 [`api/v1/sys/plugin.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/api/v1/sys/plugin.py)
 - 前端：[`pages/plugin/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/plugin) · [`apps/web/src/lib/page-registry.tsx`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/src/lib/page-registry.tsx)
 - 上游的插件文档：[FBA 文档](https://fastapi-practices.github.io/fastapi_best_architecture_docs/)
 
-## 怎么测的
+## 测试
 
 - [`tests/test_plugin_order_is_deterministic.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/tests/test_plugin_order_is_deterministic.py)：插件按依赖排出的顺序每次都一样。[`tests/test_sql_scripts.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/tests/test_sql_scripts.py)：各插件的 SQL 脚本齐全。
 - 停用插件的效果：`ai` 插件停用后 MCP 网关关闭（`test_ai_mcp.py`）、`workflow` 插件停用后它的 AI 工具一起消失（`test_ai_workflow_tools.py`）。
 - **没有测试的**：`plugin.toml` 校验、安装器、插件管理接口，插件管理页也没有 E2E。
 
-## 在演示站里试试
+## 在线体验
 
 [在线演示](https://fra.wubunan.com/sign-in)（`admin` / `123456`）：打开「系统管理 → 插件管理」，看每个插件声明的接口前缀和实际挂载的地址、它带的配置项。演示站不是开发环境，安装和卸载会被拒绝；**别去停用插件**，所有人共用这个实例。

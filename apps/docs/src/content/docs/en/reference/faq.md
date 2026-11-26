@@ -1,5 +1,5 @@
 ---
-title: FAQ and troubleshooting
+title: FAQ
 description: Troubleshooting indexed by the exact error text — 25 common problems with local setup, sign-in, database migrations, frontend work and production deploys.
 sidebar:
   order: 1
@@ -9,7 +9,9 @@ Copy the error text from your terminal or browser and find it on this page with 
 
 ## Installation and local setup
 
-### `Port 8888 is already in use`
+### Port 8888 in use
+
+**Symptom**: `Port 8888 is already in use`
 
 **Cause**: the frontend port is fixed at 8888 with `strictPort: true` in `apps/web/vite.config.ts`. When the port is taken, Vite exits instead of moving to 8889. It does this on purpose: the backend CORS allow-list, the OAuth2 redirect URIs and the desktop dev script all have 8888 hard-coded.
 
@@ -21,7 +23,9 @@ lsof -i :8888     # who is holding the port
 
 Source: [`CLAUDE.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/CLAUDE.md), section 「本地起服务」 (running locally)
 
-### `Can't open lib 'ODBC Driver 18 for SQL Server'`
+### ODBC driver not found
+
+**Symptom**: `Can't open lib 'ODBC Driver 18 for SQL Server'`
 
 **Cause**: with SQL Server, the backend connects through `aioodbc` using the ODBC driver **on the host**. The driver inside the SQL Server container doesn't count, so the container runs fine and the backend fails on its first connection.
 
@@ -33,7 +37,9 @@ odbcinst -q -d
 
 Source: [`CONTRIBUTING.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/CONTRIBUTING.md), [`apps/api/Dockerfile.prod`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/Dockerfile.prod)
 
-### `Login failed for user 'sa'` (SQL Server error 18456)
+### SQL Server login failed
+
+**Symptom**: `Login failed for user 'sa'` (SQL Server error 18456)
 
 **Cause**: `DATABASE_PASSWORD` in `.env` doesn't match the SQL Server instance's real password. The usual trigger is changing `MSSQL_SA_PASSWORD` in `docker-compose.dev.yml`: SQL Server keeps its data in a persistent volume, and an instance that has already been initialized keeps its old password.
 
@@ -41,7 +47,9 @@ Source: [`CONTRIBUTING.md`](https://github.com/yile2020/fastapi-react-admin/blob
 
 Source: [`apps/api/backend/cli.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/cli.py) (`_format_database_connection_error`)
 
-### `ModuleNotFoundError` from `pnpm test` or `pnpm db:upgrade` after pulling, although `pnpm dev` works
+### Missing modules after pulling
+
+**Symptom**: `ModuleNotFoundError` from `pnpm test` or `pnpm db:upgrade` after pulling, although `pnpm dev` works
 
 **Cause**: `uv` manages the Python dependencies, so `pnpm install` doesn't install them. `dev`, `db:init` and `db:reset` use a bare `uv run`, which syncs dependencies automatically. `test`, `test:db`, `db:upgrade`, `e2e:server` and `celery:*` pass `--no-sync`, so they fail as soon as a package is missing. A working `pnpm dev` therefore doesn't prove the dependencies are complete.
 
@@ -53,7 +61,9 @@ pnpm --filter api exec uv sync     # or pnpm install:all
 
 Source: [`apps/api/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/AGENTS.md)
 
-### Worker log shows `Received unregistered task of type '…'` and your own tasks sometimes vanish
+### Worker receives unregistered tasks
+
+**Symptom**: Worker log shows `Received unregistered task of type '…'` and your own tasks sometimes vanish
 
 **Cause**: the Celery broker defaults to Redis database 1 (`CELERY_BROKER_REDIS_DATABASE=1`). If another project's Celery on the same machine uses database 1 of the same Redis, both sets of workers consume one queue. Their tasks land on your worker and show up as "unregistered"; your tasks land on theirs and disappear without a trace.
 
@@ -67,7 +77,9 @@ Source: [`apps/api/backend/app/task/AGENTS.md`](https://github.com/yile2020/fast
 
 ## Sign-in and sessions
 
-### Signing in at `http://localhost:8888` works, but reloading the page sends you back to the sign-in page
+### Reload sends you to sign-in
+
+**Symptom**: Signing in at `http://localhost:8888` works, but reloading the page sends you back to the sign-in page
 
 **Cause**: the frontend calls `http://127.0.0.1:8088` directly by default (`API_BASE` in `packages/platform/src/api-client/client.ts`). When the page is opened from `localhost`, that is a cross-site request, and the browser doesn't store the refresh-token cookie. Sign-in itself succeeds, but after a full reload `/auth/refresh` returns 401.
 
@@ -75,7 +87,9 @@ Source: [`apps/api/backend/app/task/AGENTS.md`](https://github.com/yile2020/fast
 
 Source: [`apps/docs/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/docs/AGENTS.md)
 
-### `admin` / `123456` doesn't work after `pnpm db:init`
+### Admin sign-in fails after init
+
+**Symptom**: `admin` / `123456` doesn't work after `pnpm db:init`
 
 **Cause**: after loading the seed data, `fba init` forces the seeded admin password `123456` to be replaced. In a terminal it asks you for a new password. In a non-interactive run (`--auto`, CI, no TTY) it reads the `FBA_INIT_ADMIN_PASSWORD` environment variable and fails if that is missing. It also disables the seeded demo account `test` and gives it a random password.
 
@@ -89,7 +103,9 @@ FBA_INIT_ADMIN_PASSWORD='<strong password>' pnpm db:reset
 
 Source: [`apps/api/backend/cli.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/cli.py) (`_set_admin_password`)
 
-### `Too many requests, please try again later` (HTTP 429) on sign-in
+### Sign-in rate limited (429)
+
+**Symptom**: `Too many requests, please try again later` (HTTP 429) on sign-in
 
 The Chinese UI shows 「请求过于频繁，请稍后重试」.
 
@@ -99,7 +115,9 @@ The Chinese UI shows 「请求过于频繁，请稍后重试」.
 
 Source: [`apps/docs/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/docs/AGENTS.md), [`apps/api/backend/app/admin/api/v1/auth/auth.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/api/v1/auth/auth.py)
 
-### `LOGIN_CAPTCHA_ENABLED=false` is set in `.env`, but sign-in still asks for a captcha
+### Captcha required despite being disabled
+
+**Symptom**: `LOGIN_CAPTCHA_ENABLED=false` is set in `.env`, but sign-in still asks for a captcha
 
 **Cause**: at runtime this switch is read from the `sys_config` table. The seed data includes a `LOGIN_CAPTCHA_ENABLED` row, and the backend loads it over whatever `.env` says.
 
@@ -113,7 +131,9 @@ Source: [`apps/web/e2e/AGENTS.md`](https://github.com/yile2020/fastapi-react-adm
 
 ## Database and migrations
 
-### All existing data is gone after `pnpm db:init`
+### Data lost after init
+
+**Symptom**: All existing data is gone after `pnpm db:init`
 
 **Cause**: `pnpm db:init` (`fba init`) runs `drop_all` and then `create_all`, loads the seed data and stamps Alembic at head. It is meant for a fresh environment and asks for confirmation first (the default answer is `n`).
 
@@ -125,7 +145,9 @@ pnpm db:upgrade
 
 Source: [`apps/api/backend/alembic/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/alembic/AGENTS.md), [`CONTRIBUTING.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/CONTRIBUTING.md)
 
-### `种子数据里没有 admin 账号，初始化流程可能已经变了` (no admin account in the seed data)
+### No admin account in seed data
+
+**Symptom**: `种子数据里没有 admin 账号，初始化流程可能已经变了` (no admin account in the seed data)
 
 **Cause**: `DATABASE_PK_MODE` isn't `'snowflake'`. The seed SQL for all three databases only exists in the snowflake-ID form (`init_snowflake_test_data.sql`). In autoincrement mode no seed file is found and the step is skipped without a message. The database ends up with no admin account, and init then fails when it tries to set the admin password. The default for this setting in `core/conf.py` is `'autoincrement'`, so an `.env` without this line hits the same problem.
 
@@ -133,7 +155,9 @@ Source: [`apps/api/backend/alembic/AGENTS.md`](https://github.com/yile2020/fasta
 
 Source: [`CONTRIBUTING.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/CONTRIBUTING.md), [`apps/api/backend/cli.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/cli.py)
 
-### Changed a model and the backend reloaded, but the table didn't change
+### Table unchanged after model edit
+
+**Symptom**: Changed a model and the backend reloaded, but the table didn't change
 
 **Cause**: `--reload` in `pnpm dev` only restarts the process and re-imports the models. It never alters existing tables.
 
@@ -148,7 +172,9 @@ If you changed columns, also update `backend/sql/*/init_snowflake_test_data.sql`
 
 Source: [`CLAUDE.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/CLAUDE.md), [`apps/api/backend/alembic/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/alembic/AGENTS.md)
 
-### `Cannot insert explicit value for identity column in table '…' when IDENTITY_INSERT is set to OFF. (544)`
+### Insert fails on IDENTITY column
+
+**Symptom**: `Cannot insert explicit value for identity column in table '…' when IDENTITY_INSERT is set to OFF. (544)`
 
 **Cause**: this only happens on SQL Server, and only on tables **created by a migration**. Alembic autogenerate can't render the model's Python-side `default=snowflake.generate`. The id column it writes gets created as `IDENTITY` on SQL Server, and every INSERT fails after that. Tables built by `create_all` don't have this problem, so development and test databases never show it.
 
@@ -156,7 +182,9 @@ Source: [`CLAUDE.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/
 
 Source: [`apps/api/backend/alembic/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/alembic/AGENTS.md)
 
-### The first pytest or E2E run fails with a database connection error
+### Test database connection fails
+
+**Symptom**: The first pytest or E2E run fails with a database connection error
 
 **Cause**: both test suites run against a separate `fba_test` database, not the development database `fba`. It has to be created once by hand; until then the only symptom is a SQLAlchemy connection error that says nothing about the cause.
 
@@ -174,7 +202,9 @@ Source: [`apps/api/backend/tests/AGENTS.md`](https://github.com/yile2020/fastapi
 
 ## Frontend development
 
-### ID `2049629108245233664` became `2049629108245233700` and an update or delete hit the wrong record
+### Snowflake ID precision loss
+
+**Symptom**: ID `2049629108245233664` became `2049629108245233700` and an update or delete hit the wrong record
 
 **Cause**: snowflake IDs are around 2^61, larger than JavaScript's `Number.MAX_SAFE_INTEGER` (2^53-1). Parsing one as a number loses precision, and consecutive IDs can collapse into the same value, so sending it back targets a different record. Route parameters have the same problem, because TanStack Router runs `JSON.parse` on search values by default.
 
@@ -182,7 +212,9 @@ Source: [`apps/api/backend/tests/AGENTS.md`](https://github.com/yile2020/fastapi
 
 Source: [`CLAUDE.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/CLAUDE.md), hard rule 6
 
-### `pnpm e2e -- tests/xxx.spec.ts` runs the whole suite instead of one file
+### E2E runs the whole suite
+
+**Symptom**: `pnpm e2e -- tests/xxx.spec.ts` runs the whole suite instead of one file
 
 **Cause**: pnpm passes the `--` through to Playwright, which then ignores the file name and the arguments after it. The full suite runs (more than ten minutes), and it looks as if that one file is just slow.
 
@@ -194,7 +226,9 @@ cd apps/web && pnpm e2e tests/dept-crud.spec.ts
 
 Source: [`apps/web/e2e/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/AGENTS.md)
 
-### Docs build fails with `Node.js v22.23.3 is not supported by Astro!`
+### Docs build rejects Node version
+
+**Symptom**: Docs build fails with `Node.js v22.23.3 is not supported by Astro!`
 
 **Cause**: the docs site (`apps/docs`) is locked to Astro 7.3.x. `astro@7.4.4` needs Node ≥ 22.23.4, while the repository's `engines` field says ≥ 22.13. If the dependency was bumped to 7.4 (for example by `pnpm update`), older Node 22 releases fail with this message. `pnpm build` builds the docs site through turbo, so the whole-repo build fails as well.
 
@@ -204,7 +238,9 @@ Source: [`apps/docs/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/
 
 ## Deployment and operations
 
-### `ENVIRONMENT=prod，但有 N 项配置不合格，拒绝启动` (production config check failed)
+### Production config check fails
+
+**Symptom**: `ENVIRONMENT=prod，但有 N 项配置不合格，拒绝启动` (production config check failed)
 
 **Cause**: with `ENVIRONMENT=prod`, the backend validates its configuration before starting and refuses to start if anything fails. The checks cover the strength of `TOKEN_SECRET_KEY`, `DATABASE_PASSWORD` and `REDIS_PASSWORD`; `REQUEST_LIMITER_ENABLED` must be true (the captcha follows its setting and isn't forced); `CORS_ALLOWED_ORIGINS` must not contain `*`, `localhost` or `127.0.0.1`; and `DATABASE_USER` must not be a superuser such as `sa`, `root` or `postgres`.
 
@@ -216,7 +252,9 @@ python -c "import secrets;print(secrets.token_urlsafe(32))"
 
 Source: [`apps/api/backend/core/conf.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/core/conf.py)
 
-### `ENVIRONMENT=prod，数据库检查未通过，拒绝启动` (production database check failed)
+### Production database check fails
+
+**Symptom**: `ENVIRONMENT=prod，数据库检查未通过，拒绝启动` (production database check failed)
 
 **Cause**: in production the backend never creates tables itself. At startup it checks the database, and three things stop it:
 
@@ -228,7 +266,9 @@ Source: [`apps/api/backend/core/conf.py`](https://github.com/yile2020/fastapi-re
 
 Source: [`apps/api/backend/alembic/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/alembic/AGENTS.md), [`apps/api/backend/core/registrar.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/core/registrar.py)
 
-### `PermissionError: [Errno 13] Permission denied` while the container loads its config
+### Container can't read config
+
+**Symptom**: `PermissionError: [Errno 13] Permission denied` while the container loads its config
 
 **Cause**: the image runs as user `fba` (uid 1000), and the deploy check requires `.env.server` to be exactly mode `600`. If root owns the file, the permissions look fine on the host, but the process in the container can't read it. The error is raised deep inside pydantic-settings, so it is easy to mistake for a typo in the configuration.
 
@@ -241,7 +281,9 @@ chmod 600       .env.server
 
 Source: [`deploy/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/deploy/AGENTS.md)
 
-### The API container is up, but its health check can never reach the database
+### Container can't reach database
+
+**Symptom**: The API container is up, but its health check can never reach the database
 
 **Cause**: the database or Redis runs on the host (as with the ones bundled with the BT/aaPanel control panel), and `.env.server` says `127.0.0.1`. On the container's bridge network, `127.0.0.1` is the container itself.
 
@@ -249,7 +291,9 @@ Source: [`deploy/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blo
 
 Source: [`deploy/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/deploy/AGENTS.md)
 
-### `docker compose pull` hangs on a server in mainland China
+### Image pull hangs
+
+**Symptom**: `docker compose pull` hangs on a server in mainland China
 
 **Cause**: GHCR is often throttled to a few dozen KB/s from mainland China. Nothing errors out; it looks stuck, but one layer takes hours.
 
@@ -257,7 +301,9 @@ Source: [`deploy/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blo
 
 Source: [`deploy/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/deploy/AGENTS.md)
 
-### `/healthz` stays green while the API is down
+### Health check stays green
+
+**Symptom**: `/healthz` stays green while the API is down
 
 **Cause**: `/healthz` is answered by the nginx inside the web container with a plain `return 200`; it only proves nginx is alive. Probing a path that doesn't exist through the domain is no better: the frontend's history fallback answers it with 200 and `index.html`.
 
@@ -265,7 +311,9 @@ Source: [`deploy/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blo
 
 Source: [`deploy/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/deploy/AGENTS.md), [`deploy/README.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/deploy/README.md)
 
-### `Failed to fetch dynamically imported module` after a release
+### Chunk load fails after release
+
+**Symptom**: `Failed to fetch dynamically imported module` after a release
 
 **Cause**: this isn't a server error but a version mismatch. The open browser tab is still running the old frontend, and the code chunk it wants to load no longer exists in the new deployment.
 
@@ -273,7 +321,9 @@ Source: [`deploy/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blo
 
 Source: [`apps/web/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/AGENTS.md)
 
-### `Multiple artifacts named "github-pages" were unexpectedly found for this workflow run`
+### Duplicate Pages artifacts
+
+**Symptom**: `Multiple artifacts named "github-pages" were unexpectedly found for this workflow run`
 
 **Cause**: re-running a failed job in GitHub Actions runs another attempt under the same run ID. `upload-pages-artifact` creates a new `github-pages` artifact every time instead of replacing the previous attempt's, and `deploy-pages` exits with this error when it finds two with the same name.
 
@@ -281,6 +331,6 @@ Source: [`apps/web/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/b
 
 Source: [`.github/workflows/ci.yml`](https://github.com/yile2020/fastapi-react-admin/blob/main/.github/workflows/ci.yml) (`pages` job)
 
-## Didn't find your problem?
+## Other problems
 
 Make sure you went through every step of the [quick start](/en/getting-started/quick-start/) and [deployment](/en/getting-started/deployment/) guides. If it still fails, open a [GitHub issue](https://github.com/yile2020/fastapi-react-admin/issues) and paste the exact error text.

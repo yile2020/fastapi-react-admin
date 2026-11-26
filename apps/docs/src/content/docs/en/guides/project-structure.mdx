@@ -1,11 +1,11 @@
 ---
-title: Architecture and project structure
+title: Project structure
 description: How the front end and back end are layered and which files one request passes through, using the user list as the example — plus where to look when you want to change a form, a list, API fields, permission codes or a table.
 ---
 
 import DiagramRequestFlow from '../../../../components/DiagramRequestFlow.astro'
 
-The fastest way to read this repository for the first time is to follow one request through it. This page uses the **user list** (System → Users in the admin, `GET /api/v1/sys/users`) as the example, lists the files it passes through in order, and ends with a "what to change, where to look" table. To write a new module from scratch, see [Add a business module from scratch](/en/guides/first-module/).
+The fastest way to read this repository for the first time is to follow one request through it. This page uses the **user list** (System → Users in the admin, `GET /api/v1/sys/users`) as the example, lists the files it passes through in order, and ends with a "what to change, where to look" table. To write a new module from scratch, see [Add a module](/en/guides/first-module/).
 
 <DiagramRequestFlow
   bands={[
@@ -27,7 +27,7 @@ The fastest way to read this repository for the first time is to follow one requ
   caption="Arrows show the request direction. The highlighted hop: row-level data scope is added to the query by the crud base class, not written by hand in each method"
 />
 
-## What is in the repository?
+## Repository layout
 
 One pnpm + turbo monorepo holding the back end, three clients and this docs site.
 
@@ -57,7 +57,7 @@ Dependencies between packages go one way and are declared in each `package.json`
 
 Reverse the direction (say `ui` importing `platform`) and `pnpm arch:check` fails; CI runs it too.
 
-## Which files does one request pass through?
+## Life of a request
 
 Ten hops: the first four in the browser, the other six on the server.
 
@@ -80,7 +80,7 @@ Three things that are easy to miss:
 - **Data scope is not written by hand.** Hop 9 is done by the base class. When you really need to bypass it (a background job that must read everything), use `bypass_data_scope()`. Configuring the rules is covered in [Data permissions](/en/features/data-permissions/).
 - **Success is not decided in the page.** HTTP 200 does not mean success; the envelope `code` does. That check lives in `packages/api`, so pages only handle successful data and a thrown `ApiError`.
 
-## What is inside a back-end module?
+## Back-end module
 
 Built-in features live in [`apps/api/backend/app/admin/`](https://github.com/yile2020/fastapi-react-admin/tree/main/apps/api/backend/app/admin), one directory per layer, called in the order `api → service → crud`:
 
@@ -96,7 +96,7 @@ apps/api/backend/app/admin/
 
 Removable features are plugins under [`apps/api/backend/plugin/`](https://github.com/yile2020/fastapi-react-admin/tree/main/apps/api/backend/plugin): the same five layers plus a `plugin.toml` and their own `sql/` seeds. See [Plugins](/en/features/plugins/).
 
-## What is inside a front-end page?
+## Front-end page
 
 Pages live under [`packages/platform/src/pages/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages), one directory each. The user page has these files:
 
@@ -108,7 +108,7 @@ Pages live under [`packages/platform/src/pages/`](https://github.com/yile2020/fa
 | `index.tsx` | The page itself: query bar, table and pagination, with filters written to the URL |
 | `table-features.ts` | Which table features this table turns on |
 
-## I want to change something — where do I look?
+## Change lookup
 
 | What to change | Where |
 |---|---|
@@ -122,11 +122,11 @@ Pages live under [`packages/platform/src/pages/`](https://github.com/yile2020/fa
 | Menus and button permission codes | Seeds are the `init_snowflake_test_data.sql` files under `apps/api/backend/sql/`, one per database; seeds only run at initialisation, so a database already in use also needs a data migration. The back end declares codes with `RequestPermission('…')`, the front end guards with `requirePerm(…)` |
 | UI text and translations | `zh-CN.json` and `en-US.json` in [`packages/i18n/src/locales/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/i18n/src/locales), then `pnpm i18n:check`. Back-end messages are separate, in `apps/api/backend/locale/` |
 | Environment variables | [`apps/api/backend/.env.example`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/.env.example) and [`core/conf.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/core/conf.py) |
-| Settings editable in the UI | The config plugin, `apps/api/backend/plugin/config/`; see [Config and data dictionary](/en/features/config-dict/) |
+| Settings editable in the UI | The config plugin, `apps/api/backend/plugin/config/`; see [Config and dictionary](/en/features/config-dict/) |
 | Scheduled jobs | [`apps/api/backend/app/task/`](https://github.com/yile2020/fastapi-react-admin/tree/main/apps/api/backend/app/task); see [Scheduled jobs](/en/features/scheduler/) |
-| A page visible in the sidebar | Five places: the route file, the page registry, the page directory, a `sys_menu` record and the locale files. Step by step in [Add a business module from scratch](/en/guides/first-module/) |
+| A page visible in the sidebar | Five places: the route file, the page registry, the page directory, a `sys_menu` record and the locale files. Step by step in [Add a module](/en/guides/first-module/) |
 
-## Where should an AI start reading this repository?
+## Entry point for AI
 
 Conventions for coding agents live in the repository, not on this site: [`CLAUDE.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/CLAUDE.md) at the root holds the cross-module rules, and an `AGENTS.md` in each module directory holds the pitfalls measured in that layer. Claude Code loads the relevant one automatically when it reads a file in that directory.
 

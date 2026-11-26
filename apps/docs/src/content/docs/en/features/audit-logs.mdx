@@ -12,7 +12,7 @@ The system keeps three kinds of records, each answering one question. The **sign
 
 <ProductShot src={shot} alt="Data change history" url="localhost:8888/log/change" />
 
-## Where is it in the UI?
+## UI entry points
 
 | Screen | Path | Permission code | What it does |
 |---|---|---|---|
@@ -25,7 +25,7 @@ The system keeps three kinds of records, each answering one question. The **sign
 - ⚠️ The frontend route guards of the sign-in and operation log pages currently check `log:login:del` / `log:opera:del` rather than `list`, so a role granted only viewing cannot open them. The Data changes page checks `log:change:list`.
 - Data change history is **not limited by data scope**: anyone with `log:change:list` sees changes to every object.
 
-## What does the sign-in log record?
+## Sign-in log
 
 Each row has the username, success or failure, the reason, IP and location (country / region / city), browser, operating system, device, time, and an **event type**:
 
@@ -42,7 +42,7 @@ Each row has the username, success or failure, the reason, IP and location (coun
 - Third-party sign-in (GitHub / Google) only records successes. Sign-ins through the Swagger debug endpoint are not recorded.
 - Locations come from a bundled offline IP database (`ip2region`) by default; pure IPv6 addresses get no location. It can be switched to an online lookup or turned off. Results are cached in Redis for a day.
 
-## What does the operation log record, and how is it redacted?
+## Operation log and redaction
 
 Every request under `/api/v1` gets a row, GET included: user, method, path, endpoint summary, IP and location, browser, request arguments, request headers, response headers, response body, HTTP status, business code, message and duration (ms).
 
@@ -59,7 +59,7 @@ Every request under `/api/v1` gets a row, GET included: user, method, path, endp
 
 Someone with `log:change:list` who opens a write (non-GET) entry sees **What this request changed**: the data changes that request caused, up to 50, with an "N more" link to the Data changes page filtered to that request. In the other direction, every data change links back to the operation log entry that caused it. The two are joined by the request's trace_id.
 
-## How is data change history captured?
+## Data change history
 
 Not by writing "record this" in each endpoint, but by hooking the database session: before a transaction commits, each object changed in it is compared and turned into "field · old value · new value", **written in the same transaction as the business data**, so a rollback leaves no record behind. An object changed several times in one transaction gets one row with the final result.
 
@@ -80,7 +80,7 @@ Objects covered on main:
 - A single statement touching more than 500 rows is recorded as one summary row.
 - Clicking a field name in the drawer shows that field's history only; on the Data changes page the field goes into the URL and survives a reload.
 
-## How do I know the records have not been tampered with?
+## Tamper detection
 
 Each data change is numbered in order as it is written and signed with HMAC-SHA256 over the row's content **and the previous row's signature**, forming a chain. Editing a row, deleting one in the middle, deleting the last few, inserting one, or re-signing the whole chain with a different key all fail verification.
 
@@ -92,7 +92,7 @@ Three ways to verify, with the same result:
 
 The signing key is `DATA_CHANGE_CHAIN_KEY` in `.env`, **kept in the environment and never in the database**, so someone with database access who edits records cannot re-sign them to match. While it is empty, rows are signed with an empty key, which only catches accidental direct edits; the verification result says so. Once set, don't change it: rows signed before a change are listed separately as signed with an older key. Someone holding both the database **and** the key is beyond what the chain can stop.
 
-## How long are records kept?
+## Retention
 
 | Records | Default | Where to change it |
 |---|---|---|
@@ -102,7 +102,7 @@ The signing key is `DATA_CHANGE_CHAIN_KEY` in `.env`, **kept in the environment 
 
 The cleanup task `maintenance.prune_logs` runs daily at 03:15 and deletes by business time (sign-in time, operation time) in batches of 2,000. The 180 days come from Article 21 of China's Cybersecurity Law, which requires network logs to be kept for at least six months; the migration that raised it from 30 to 180 days **only changes the task if it was still at 30**, leaving your own value alone. When data changes are pruned, the chain's starting point is moved first, so verification still passes afterwards.
 
-## Which settings are there?
+## Settings
 
 **Changed in the UI**: data change retention (Config → **Log**) and sign-in / operation log retention (the task argument under Scheduler), see the previous section.
 
@@ -119,7 +119,7 @@ The cleanup task `maintenance.prune_logs` runs daily at 03:15 and deletes by bus
 | `OPERA_LOG_RESPONSE_CONTENT_TYPES` | `application/json` · `text/plain` | Response types whose body is recorded |
 | `OPERA_LOG_QUEUE_MAXSIZE` | `100000` | Length of the log write queue; entries are dropped when it is full |
 
-## Adding data change history to your own table
+## Adding your own tables
 
 1. Put a `data_change.py` in the module or plugin directory; it is picked up at startup.
 2. Call `register_audited(...)` for the model and **classify every column** (field / reference / secret / ignored / soft delete); use `register_audited_set` for link tables and `register_audited_child` for one-to-one child tables recorded under the parent.
@@ -129,7 +129,7 @@ The cleanup task `maintenance.prune_logs` runs daily at 03:15 and deletes by bus
 
 When you add a credential-like request field, add it to `OPERA_LOG_REDACT_KEYS` too: a test scans every endpoint's schema and fails on credential-like fields that are not masked. Step-by-step notes and pitfalls are in [`common/data_change/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/common/data_change/AGENTS.md).
 
-## What it does not do
+## Limitations
 
 - **Not recorded**: personal preferences, password history, session start and end (those are in the sign-in log); changes made by raw SQL, migrations or seed data.
 - Failed third-party sign-ins and sign-ins through the Swagger debug endpoint are not in the sign-in log.
@@ -137,7 +137,7 @@ When you add a credential-like request field, add it to `OPERA_LOG_REDACT_KEYS` 
 - Data change history (chain included) is tested in CI on PostgreSQL and SQL Server; it has not been verified on MySQL.
 - Sign-in and operation log retention is not on the Config page; it is the scheduled task's argument.
 
-## Where is the code?
+## Source code
 
 - Sign-in log: [`login_log_service.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/service/login_log_service.py) · IP and browser parsing [`utils/request_parse.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/utils/request_parse.py)
 - Operation log: [`middleware/opera_log_middleware.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/middleware/opera_log_middleware.py) · "looks like a secret" check [`common/secret_keys.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/common/secret_keys.py)
@@ -145,7 +145,7 @@ When you add a credential-like request field, add it to `OPERA_LOG_REDACT_KEYS` 
 - Cleanup: `prune_logs` in [`tasks/maintenance/tasks.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/task/tasks/maintenance/tasks.py)
 - Frontend: [`pages/log-login/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/log-login) · [`pages/log-opera/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/log-opera) · [`pages/log-change/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/log-change) · the shared change history drawer [`_shared/data-change/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/_shared/data-change)
 
-## How is it tested?
+## Tests
 
 Backend tests run against a real database and Redis:
 
@@ -156,6 +156,6 @@ Backend tests run against a real database and Redis:
 
 In the browser (Playwright): [`data-change.spec.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/tests/data-change.spec.ts) (rename a department → the row's **Change history** shows old → new → filter the Data changes page by object → jump to that request's operation log; the operation log's **What this request changed** → see all on Data changes) and [`login-events.spec.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/tests/login-events.spec.ts) (lock an account with wrong passwords → filter the sign-in log by **Account locked**).
 
-## Try it on the demo
+## Try the demo
 
 On the [live demo](https://fra.wubunan.com/sign-in) (`admin` / `123456`), rename a department under System → Departments, then open that row's **Change history** to see old name → new name; follow it to the operation log entry that caused it and look at the arguments and duration. `admin` is a superuser, so **Check integrity** on the Data changes page works too. The demo is shared, so please rename it back afterwards.

@@ -1,5 +1,5 @@
 ---
-title: Users, roles, departments and menus
+title: Users and roles
 description: 'How to use the four permission screens: enabling users, resetting passwords and the "admin sign-in" flag, the role permission matrix, department tree rules, the five menu types (directory / menu / button / embedded page / external link) and dead-link checks, and when permission changes take effect.'
 sidebar:
   order: 2
@@ -12,7 +12,7 @@ Permissions rest on four tables and four screens: **departments** form a tree, a
 
 <ProductShot src={shot} alt="Roles: the permission matrix" url="localhost:8888/system/role" />
 
-## Where is it in the UI?
+## UI entry points
 
 | Screen | Path | Needed to open the page | Other permission codes |
 |---|---|---|---|
@@ -23,7 +23,7 @@ Permissions rest on four tables and four screens: **departments** form a tree, a
 
 ⚠️ The "needed to open the page" column is what the frontend route guards check today: all four check a **create or delete** code, not the view code. A role with only the view code is redirected to 403. The seed MANAGER role has the Users and Departments menus and both view codes, but neither `sys:user:del` nor `sys:dept:add`. The E2E suite ran into this ([`e2e/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/AGENTS.md): a test role without the Departments buttons lands on `/403` when opening the department page). Superusers are not subject to route guards.
 
-## What is the difference between "Superuser" and "Admin sign-in"?
+## Superuser and admin sign-in
 
 A user has two switches, changed under **Permissions & security** in the user list (superusers only, and not on yourself):
 
@@ -36,9 +36,9 @@ Superuser-only endpoints require **both**.
 
 ⚠️ **Users created by hand or by import start with Admin sign-in off**, so after their first sign-in they cannot save anything until a superuser turns it on. The switch's description in the UI says "With this off the account still exists but cannot get in"; in fact the account can still sign in and read, it just cannot change anything.
 
-## What can be done with users?
+## User operations
 
-- **Create**: a department is required, the password must pass the [password rules](/en/features/login-security/#what-are-the-password-rules), and the form requires at least one role. A user belongs to exactly one department and can have several roles; saving replaces the whole set of roles.
+- **Create**: a department is required, the password must pass the [password rules](/en/features/login-security/#password-rules), and the form requires at least one role. A user belongs to exactly one department and can have several roles; saving replaces the whole set of roles.
 - **Disable / enable**: a user is either normal or disabled. Disabling **ends all of their sessions at once**, and their open pages go back to the sign-in screen.
 - **Locked** is not a status: 5 wrong passwords in a row lock the account for 5 minutes (changeable in Config); it unlocks on its own, and there is no manual unlock in the UI.
 - **Reset password**: superusers only, no old password needed; the new password still cannot repeat recent ones; all of the user's sessions end.
@@ -48,7 +48,7 @@ Superuser-only endpoints require **both**.
 
 The department filter on the user list matches **that department only**, not its children.
 
-## How does the role permission matrix work?
+## Role permission matrix
 
 The role page has the role list on the left and three tabs on the right: **Permissions**, **Data scope** and **Members**.
 
@@ -62,11 +62,11 @@ The role page has the role list on the left and three tabs on the right: **Permi
 
 Deleting a role is logical; once deleted it no longer grants anything to anyone.
 
-## Does the other person have to sign in again after a permission change?
+## Applying permission changes
 
-No. When a role's permissions, data scopes or members change, the affected users' permission cache is cleared after the transaction commits, and **from their next request** the backend uses the new permissions. The permission codes and sidebar cached in their browser are not refreshed automatically (there is no push), so they need to **reload the page** to see new menus and buttons. The E2E suite checks this: after a data scope is unbound, the target account sees the change on reload without signing in again. See also [Data permissions](/en/features/data-permissions/#does-a-user-have-to-sign-in-again-after-a-change).
+No. When a role's permissions, data scopes or members change, the affected users' permission cache is cleared after the transaction commits, and **from their next request** the backend uses the new permissions. The permission codes and sidebar cached in their browser are not refreshed automatically (there is no push), so they need to **reload the page** to see new menus and buttons. The E2E suite checks this: after a data scope is unbound, the target account sees the change on reload without signing in again. See also [Data permissions](/en/features/data-permissions/#applying-permission-changes).
 
-## What are the department rules?
+## Department rules
 
 - **Department codes** are unique and cannot change after creation; **names** only need to be unique among siblings.
 - The **leader** must be an enabled user (checked only when the leader changes).
@@ -74,9 +74,9 @@ No. When a role's permissions, data scopes or members change, the affected users
 - A department that **still has users or child departments cannot be deleted**; with children, the delete button is disabled.
 - After a department is **disabled**, requests from users who belong directly to it are refused ("The department of this account is disabled"); their sessions are not ended.
 - The department tree is limited by data scope: people see only the departments in their scope.
-- One xlsx can build a whole department tree; see [Import and export](/en/features/import-export/#how-does-one-file-build-a-whole-department-tree).
+- One xlsx can build a whole department tree; see [Import and export](/en/features/import-export/#importing-a-department-tree).
 
-## What menu types are there?
+## Menu types
 
 | Type | In the sidebar | Required |
 |---|---|---|
@@ -97,35 +97,35 @@ When upgrading, check existing embedded URLs: relative values without a leading 
 - Menu titles: the Chinese UI shows the title from the database; other languages look up a built-in translation by path (`menu:<path>`), so renaming a menu's Chinese title does not change the English UI. The form says so.
 - A menu cannot be moved under its own descendant, and cannot be deleted while it has children.
 
-## Which settings are there?
+## Settings
 
 Almost everything on these four screens is configured in the UI. Related settings:
 
 | Key | Where | Default | Notes |
 |---|---|---|---|
-| `USER_LOCK_THRESHOLD` · `USER_LOCK_SECONDS` | Config → **Passwords & lockout** | `5` · `300` | Wrong passwords before lockout and for how long; see [Security configuration](/en/reference/security-config/#change-settings-in-the-ui) |
+| `USER_LOCK_THRESHOLD` · `USER_LOCK_SECONDS` | Config → **Passwords & lockout** | `5` · `300` | Wrong passwords before lockout and for how long; see [Security configuration](/en/reference/security-config/#settings-in-the-ui) |
 | `USER_IMPORT_DEFAULT_PASSWORD` | `.env` | empty | Initial password for imported users; empty = user import is off |
-| `RBAC_ROLE_MENU_MODE` | `.env` | `true` | Permission-code mode; `false` is casbin mode, see [Data permissions](/en/features/data-permissions/#which-settings-are-there) |
+| `RBAC_ROLE_MENU_MODE` | `.env` | `true` | Permission-code mode; `false` is casbin mode, see [Data permissions](/en/features/data-permissions/#settings) |
 | `RBAC_ROLE_MENU_EXCLUDE` | `.env` | `[]` | Permission codes listed here skip the check |
 
-## Adding menus and button permission codes for a new page
+## New page permission codes
 
-Step 7 of [Adding a business module from scratch](/en/guides/first-module/#step-7-add-the-menu-and-button-permission-codes) describes both ways: for local experiments, create the directory, menu and buttons by hand under Menus; to ship them with the code, add the menu rows to the seed SQL for all three databases (same IDs), write a data migration, run `pnpm seed:manifest --write`, and `test_permission_codes.py` checks that the backend guards, the frontend `<Can perm>` gates and the seed menus agree.
+Step 7 of [Adding a business module from scratch](/en/guides/first-module/#7-add-menus-and-permissions) describes both ways: for local experiments, create the directory, menu and buttons by hand under Menus; to ship them with the code, add the menu rows to the seed SQL for all three databases (same IDs), write a data migration, run `pnpm seed:manifest --write`, and `test_permission_codes.py` checks that the backend guards, the frontend `<Can perm>` gates and the seed menus agree.
 
 ## Known issues
 
-- The four screens' frontend route guards check create / delete codes rather than the view code; see [above](#where-is-it-in-the-ui).
-- Users created by hand or by import start without Admin sign-in and cannot save anything after their first sign-in; the switch's UI description does not match its behaviour, see [above](#what-is-the-difference-between-superuser-and-admin-sign-in).
+- The four screens' frontend route guards check create / delete codes rather than the view code; see [above](#ui-entry-points).
+- Users created by hand or by import start without Admin sign-in and cannot save anything after their first sign-in; the switch's UI description does not match its behaviour, see [above](#superuser-and-admin-sign-in).
 - The user delete dialog says it cannot be undone; deletion is actually logical, there is just no restore.
-- Data scopes have no "my department and all below" template; see [Data permissions](/en/features/data-permissions/#limits).
+- Data scopes have no "my department and all below" template; see [Data permissions](/en/features/data-permissions/#limitations).
 
-## Where is the code?
+## Source code
 
 - Endpoints: [`api/v1/sys/user.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/api/v1/sys/user.py) · [`role.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/api/v1/sys/role.py) · [`dept.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/api/v1/sys/dept.py) · [`menu.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/api/v1/sys/menu.py)
 - Permission checks: [`common/security/rbac.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/common/security/rbac.py) · permission cache invalidation [`app/admin/utils/cache.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/utils/cache.py)
 - Frontend: [`pages/user/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/user) · [`pages/role/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/role) (matrix in `perm-matrix.tsx` / `perm-tree.ts`) · [`pages/dept/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/dept) · [`pages/menu/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/menu) (dead-link rule in `dead-link.ts`, explained in [`AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/menu/AGENTS.md)) · sidebar [`shell/sidebar/use-sidebar.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/shell/sidebar/use-sidebar.ts) · route guards [`auth/guards.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/auth/guards.ts)
 
-## How is it tested?
+## Tests
 
 Backend (`apps/api/backend/app/admin/tests/`):
 
@@ -136,6 +136,6 @@ Backend (`apps/api/backend/app/admin/tests/`):
 
 In the browser (Playwright): [`perm-matrix.spec.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/tests/perm-matrix.spec.ts) (saving writes only to the role named in the URL; Revert discards unsaved changes; the missing-parent warning and one-click fix in independent mode), [`dept-crud.spec.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/tests/dept-crud.spec.ts) (duplicate codes, code locked when editing, sibling names unique, departments that cannot be deleted), [`menu-dead-link.spec.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/tests/menu-dead-link.spec.ts), [`menu-rename-disable.spec.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/tests/menu-rename-disable.spec.ts) (renaming a built-in menu; disabling a directory removes the branch, re-enabling restores it) and [`data-permission.spec.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/tests/data-permission.spec.ts) (after a data scope is unbound, the target account sees the change on reload without signing in again).
 
-## Try it on the demo
+## Try the demo
 
 On the [live demo](https://fra.wubunan.com/sign-in) (`admin` / `123456`), open System → Roles, pick a role, switch between **Cascade nodes** and **Independent nodes** under **Permissions** to see the difference, and search for a permission code (such as `sys:user:list`) to see which row it belongs to. The Menus page shows whether there are dead links right now. The demo is shared, so a permission change affects every demo account with that role; please **Revert** afterwards.

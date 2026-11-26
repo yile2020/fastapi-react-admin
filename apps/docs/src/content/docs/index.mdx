@@ -4,7 +4,7 @@ description: 开源中后台底座，FastAPI + React 19 + shadcn/ui：Web、桌�
 template: splash
 hero:
   title: 中后台底座，<br/>像榫卯一样<span class="shine">咬合</span>。
-  tagline: 基于 FastAPI 与 React 19 的开源中后台底座。Web、桌面、手机三端同一个仓库；行级数据权限、审批流、AI 助手这些每个系统都要做的，已经做好了。
+  tagline: 基于 FastAPI 与 React 19 的开源中后台底座。Web、桌面、手机三端同一个 monorepo，AI 改一个接口，前后端一次改完；行级数据权限、审批流、AI 助手这些每个系统都要做的，已经做好了。
   actions:
     - text: 快速开始
       link: getting-started/quick-start/
@@ -61,9 +61,9 @@ AI 让要做的系统越来越多，可每个新系统开头都在重复登录�
 
 <div class="showcases">
 
-<Showcase wide eyebrow="一份底座，三种体验" title={'Web · 桌面 · 手机\n一个仓库。'} lead="Web 的工作台和多页签，桌面的打印与硬件桥接，手机的原生审批与通知。共用底层能力，各有适合自己的界面。" href="getting-started/introduction/#一个仓库里有什么" more="看仓库结构">
+<Showcase wide eyebrow="一份底座，三种体验" title={'Web · 桌面 · 手机\n一个仓库。'} lead="Web 的工作台和多页签，桌面的打印与硬件桥接，手机的原生审批与通知。共用底层能力，各有适合自己的界面。" href="getting-started/introduction/#仓库内容" more="看仓库结构">
 
-后端、客户端与文档站，都在同一个 pnpm + turbo monorepo。依赖严格单向，CI 用架构检查把关。
+后端、客户端与文档站，都在同一个 pnpm + turbo monorepo。AI 改一个接口，能在同一次改动里把后端和调用它的客户端一起改完，CI 一次验全仓；依赖严格单向，架构检查把关。
 
 <DiagramMonorepo
   slot="diagram"
@@ -111,7 +111,7 @@ AI 让要做的系统越来越多，可每个新系统开头都在重复登录�
 
 </Showcase>
 
-<Showcase eyebrow="让每一次改动有据可依" title="为 AI 协作而设计" lead="把上下文交给 AI，把验证留给工程。目录规约、真实测试、接口契约，一起托住快速迭代。" href="getting-started/introduction/#为什么说它适合和-ai-一起写代码" more="了解协作方式">
+<Showcase eyebrow="让每一次改动有据可依" title="为 AI 协作而设计" lead="把上下文交给 AI，把验证留给工程。目录规约、真实测试、接口契约，一起托住快速迭代。" href="getting-started/introduction/#适合-ai-协作开发" more="了解协作方式">
 
 1600+ 条测试连接真实依赖；OpenAPI 类型已用于移动端，Web 客户端持续迁移中。
 

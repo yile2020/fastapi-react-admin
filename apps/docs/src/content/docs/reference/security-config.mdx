@@ -5,9 +5,9 @@ description: 登录、密码与会话的配置键、默认值和生效顺序，�
 
 操作步骤见[登录与安全](/features/login-security/)和[登录会话](/features/login-sessions/)。本页供管理员查参数、开发者查实现与扩展入口。
 
-## 配置按什么顺序生效？
+## 生效顺序
 
-每组还有一个总开关 `<分组>_CONFIG_STATUS`，设成 0 时整组不读数据库、回落到 `.env` 的值。反过来，**这些键在 `.env` 里写了也会被数据库里的值覆盖** —— 常见问题里[「`.env` 关了验证码，登录页还要输」](/reference/faq/#env-里设了-login_captcha_enabledfalse登录页还是要验证码)就是这个原因。
+每组还有一个总开关 `<分组>_CONFIG_STATUS`，设成 0 时整组不读数据库、回落到 `.env` 的值。反过来，**这些键在 `.env` 里写了也会被数据库里的值覆盖** —— 常见问题里[「`.env` 关了验证码，登录页还要输」](/reference/faq/#关了验证码仍要输入)就是这个原因。
 
 ## 在参数配置中修改
 
@@ -95,7 +95,7 @@ TOTP 使用 6 位数字、30 秒时间片、SHA-1，前后各容忍一个时间�
 
 </details>
 
-## 加一种登录方式或一个「踢人」入口要注意什么？
+## 扩展须知
 
 - **新的登录方式要过 `mfa_service.gate()`**：身份确认之后调它，决定是直接开会话还是进入第二步。手机验证码登录就是逐条照抄了密码登录的检查（IP 锁定、停用判定、密码过期、成败计数），验证码替代的只是「密码对不对」这一步 —— 只复用「开会话」那一段的话，这些检查全会漏掉。
 - **不用登录就能调的新接口**，要加进 `TOKEN_REQUEST_PATH_EXCLUDE`，写完整路径、不要写成前缀。
@@ -103,7 +103,7 @@ TOTP 使用 6 位数字、30 秒时间片、SHA-1，前后各容忍一个时间�
 
 细节和踩过的坑在 [`common/security/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/common/security/AGENTS.md)「登录会话」一节。
 
-## 代码在哪
+## 代码位置
 
 - 登录流程：[`auth_service.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/service/auth_service.py) · 接口 [`api/v1/auth/auth.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/api/v1/auth/auth.py)
 - 二次验证：[`mfa_service.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/service/mfa_service.py) · [`utils/totp.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/utils/totp.py)
@@ -112,7 +112,7 @@ TOTP 使用 6 位数字、30 秒时间片、SHA-1，前后各容忍一个时间�
 - 第三方登录：[`plugin/oauth2/`](https://github.com/yile2020/fastapi-react-admin/tree/main/apps/api/backend/plugin/oauth2)
 - 前端：登录页 [`sign-in.tsx`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/src/routes/_guest/sign-in.tsx) · 个人中心 [`pages/profile/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/profile) · 在线用户 [`pages/log-online/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/log-online) · 会话与刷新 [`auth/session.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/auth/session.ts)
 
-## 怎么测的
+## 测试
 
 下面列出已有测试文件和覆盖的行为，可沿链接查看具体断言。
 

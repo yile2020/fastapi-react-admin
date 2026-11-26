@@ -34,22 +34,24 @@ const llms = `${import.meta.env.BASE_URL.replace(/\/$/, '')}${english ? '/en' : 
 
 <style>
   .docs-sidebar { padding-block: 0.75rem 1rem }
-  .section-label { margin: 0 0 0.7rem; padding-inline: 0.9rem; color: var(--sl-color-white); font-size: 0.8rem; font-weight: 650; letter-spacing: 0.02em }
-  ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.15rem }
+  /* 分组标题只是标签，不能长得像一条能点的条目：比条目小一级、淡一档、拉开字距；
+     条目颜色深一档，左边一条细线把同组的收在一起（原来标题 14px 加粗、比条目还显眼，看着像第一条菜单） */
+  .section-label { margin: 0 0 0.45rem; padding-inline: 0.9rem; color: var(--sl-color-gray-3); font-size: var(--fs-2xs); font-weight: var(--fw-medium); letter-spacing: 0.06em }
+  ul { list-style: none; margin: 0 0 0 0.9rem; padding: 0 0 0 0.45rem; display: grid; gap: 0.15rem; border-inline-start: 1px solid var(--sl-color-hairline) }
   a {
     position: relative; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
-    min-height: 2.5rem; padding: 0.5rem 0.9rem; border-radius: 0.5rem;
-    color: var(--sl-color-gray-2); text-decoration: none; font-size: 0.875rem; line-height: 1.5;
+    min-height: 2.5rem; padding: 0.5rem 0.75rem; border-radius: 0.5rem;
+    color: var(--sl-color-gray-1); text-decoration: none; font-size: var(--fs-sm); line-height: var(--lh-ui);
   }
-  a:hover { color: var(--sl-color-white); background: var(--sl-color-gray-6) }
-  a[aria-current='page']::before {
-    content: ''; position: absolute; inset-inline-start: 0; top: 0.7rem; bottom: 0.7rem;
-    width: 2px; border-radius: 2px; background: var(--sl-color-accent);
+  a:hover { color: var(--sl-color-white); background: color-mix(in oklab, var(--sl-color-white) 6%, transparent) }
+  /* 当前页：实心品牌墨色药丸（浅色是深紫底白字，深色是亮紫底深字），见 theme.css 的 --current-* */
+  a[aria-current='page'], a[aria-current='page']:hover {
+    color: var(--current-fg); background: var(--current-bg); font-weight: var(--fw-medium);
+    box-shadow: 0 6px 16px -10px oklch(0.3 0.15 277 / 0.6);
   }
   a:focus-visible { outline: 2px solid var(--sl-color-accent); outline-offset: 2px }
   .docs-resources { border-top: 1px solid var(--sl-color-hairline-shade); margin-top: 1.5rem; padding-top: 1.5rem }
-  .docs-resources .section-label { color: var(--sl-color-gray-3) }
-  .docs-resources a { color: var(--sl-color-gray-3); font-size: 0.8rem; min-height: 2.25rem }
+    .docs-resources a { color: var(--sl-color-gray-3); font-size: var(--fs-sm); min-height: 2.25rem }
   .docs-resources a:hover { color: var(--sl-color-white) }
-  .docs-resources span { font-size: 0.875rem; opacity: 0.65 }
+  .docs-resources span { font-size: var(--fs-sm); opacity: 0.65 }
 </style>

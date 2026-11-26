@@ -11,7 +11,7 @@ Follow these four steps to reach your local dashboard. The default stack uses Po
 
 <span id="what-do-i-need-installed"></span>
 
-## Before you start
+## Prerequisites
 
 | Tool | Requirement |
 |---|---|
@@ -21,7 +21,7 @@ Follow these four steps to reach your local dashboard. The default stack uses Po
 
 <span id="how-do-i-run-it"></span>
 
-## 1. Start the database and Redis
+## 1. Start database and Redis
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d
@@ -35,7 +35,7 @@ docker compose -f docker-compose.dev.yml ps
 
 **Expected result:** both `fba_postgres` and `fba_redis` report `healthy`. On the first start, wait for their health checks before continuing.
 
-## 2. Install dependencies and prepare configuration
+## 2. Dependencies and configuration
 
 ```bash
 pnpm install:all
@@ -75,7 +75,7 @@ The revision should be marked `(head)`.
 
 <span id="how-do-i-know-each-step-worked"></span>
 
-## 4. Start the app and sign in
+## 4. Start and sign in
 
 ```bash
 pnpm dev
@@ -109,7 +109,7 @@ Use the password chosen during initialization. `admin` / `123456` belongs to the
 <details>
 <summary>Can I disable the captcha locally?</summary>
 
-Yes. After signing in, set `LOGIN_CAPTCHA_ENABLED` to `false` under **System → Config**; it takes effect immediately. Database settings can override `.env`; see [captcha configuration troubleshooting](/en/reference/faq/#login_captcha_enabledfalse-is-set-in-env-but-sign-in-still-asks-for-a-captcha).
+Yes. After signing in, set `LOGIN_CAPTCHA_ENABLED` to `false` under **System → Config**; it takes effect immediately. Database settings can override `.env`; see [captcha configuration troubleshooting](/en/reference/faq/#captcha-required-despite-being-disabled).
 
 For debugging, use the `uuid` from `GET /api/v1/auth/captcha` to read the answer in Redis:
 
@@ -152,7 +152,7 @@ Continue with [Databases](/en/features/databases/) or [File storage](/en/feature
 
 </details>
 
-## Where to go next
+## Next steps
 
 - [Feature overview](/en/features/overview/): what the system can do.
 - [Sign-in and security](/en/features/login-security/): password policies and two-factor setup.

@@ -1,5 +1,5 @@
 ---
-title: Dashboard and workspace
+title: Workspace
 description: A personal dashboard (choose cards, drag to reorder, set widths, cards appear by permission, layout stored on the server and synced across devices); the ⌘K command palette, shortcuts and product tour; accent color, radius, density and tab style; list columns shown and ordered via the URL; per-user time zone, Chinese and English, and a new-version prompt.
 sidebar:
   order: 0
@@ -12,7 +12,7 @@ After sign-in the first page is the **dashboard**: a set of cards (Waiting on me
 
 <ProductShot src={shot} alt="Dashboard" url="localhost:8888/dashboard" />
 
-## Where is it in the UI?
+## UI entry points
 
 | What | Where | Stored |
 |---|---|---|
@@ -25,7 +25,7 @@ After sign-in the first page is the **dashboard**: a set of cards (Waiting on me
 | Language | User menu at top right → **Language**; also on the sign-in page | Browser |
 | List **Columns** | At the right of each list's header | URL |
 
-## Which cards are there, and who sees them?
+## Cards and visibility
 
 | Card | Content | Who sees it | Default |
 |---|---|---|---|
@@ -41,7 +41,7 @@ After sign-in the first page is the **dashboard**: a set of cards (Waiting on me
 
 **Cards without permission are not rendered**, rather than rendered as an empty "no access" shell, and the backend endpoints behind them check the same conditions. The "System" group appears only for people who can see at least one of its cards.
 
-## How do I customise the dashboard?
+## Customising the dashboard
 
 Click **Custom** at the top right to enter edit mode (the URL gains `edit=true`, which survives a reload):
 
@@ -74,11 +74,11 @@ Shortcuts:
 | Middle-click a tab | Close it (can be turned off in preferences) |
 | Right-click a tab | Tab menu |
 
-## What is the product tour?
+## Product tour
 
 A seven-step tour: sidebar → tabs → page content → command palette → notifications → profile → help. It never starts on its own; open it from **Help → Product tour** in the top bar or the command palette. People who turned tabs off skip that step automatically. A notice that pops up while the tour is open waits until the tour ends.
 
-## What can be adjusted in the appearance?
+## Appearance
 
 In the **Theme**, **Layout** and **Tabs** sections of Profile; changes apply immediately and there is no save button:
 
@@ -95,7 +95,7 @@ In the **Theme**, **Layout** and **Tabs** sections of Profile; changes apply imm
 
 These are stored **in the browser** (`admin:prefs` in `localStorage`) and do not follow the account: another browser starts from the defaults. **Restore defaults** resets all of them. The sign-in page follows the theme too, and has its own theme and language switches.
 
-## Columns, pagination and filters on lists
+## List view settings
 
 - **Columns**: the **Columns** button at the right of the header lets you tick which columns show and drag to reorder them. The choice goes into the URL (`hide=` for hidden columns, `cols=` for an order that differs from the default), so it survives a reload and a shared link shows the same columns; **Restore defaults** removes both parameters.
 - **Pagination**: 10 / 20 / 30 / 50 rows, 20 by default; written to the URL only once changed.
@@ -106,7 +106,7 @@ These are stored **in the browser** (`admin:prefs` in `localStorage`) and do not
 - **Time zone** is per person, set under Profile → **Profile**, default `Asia/Shanghai`. It **only changes how times are displayed** (lists, details, the dashboard greeting and where "today" starts, times in exported files); it does not change when logs were recorded or which time zone scheduled jobs run in. After changing it, tabs that are already open convert times once their data is refreshed.
 - **Language** is Simplified Chinese or English, switched from the user menu or the sign-in page and stored in the browser; requests then carry `Accept-Language`, so backend messages, config names, endpoint descriptions and the like switch language too. Business data entered by users is not translated.
 
-## How do people find out about a new version?
+## New version notice
 
 Every 10 minutes, and whenever the browser tab regains focus (at most once a minute), the frontend fetches `/version.json` and compares it with the version it was built with; it also catches the "failed to load page code" errors that only happen after a deploy. When a new version is found, a toast that stays until dismissed says "A new version is available" with a **Refresh** button. **It never reloads by itself**: the user may be in the middle of a form.
 
@@ -120,7 +120,7 @@ Every 10 minutes, and whenever the browser tab regains focus (at most once a min
 
 **Adding a command palette action**: add it to `actionItems` in [`shell/command-menu.tsx`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/shell/command-menu.tsx); new pages appear automatically once they have a menu row. **Adding a shortcut** has no registry: add your own listener, call `preventDefault` for modifier combinations, check that single keys are not typed into an input, and add a line to `shortcuts-dialog.tsx`. **Adding a tour step**: add the step in `shell/tour/shell-tour.ts`, put `data-tour` on the target element (`pnpm arch:check` fails if the target does not exist).
 
-## What it does not do
+## Limitations
 
 - Appearance preferences, language and saved views live only in the current browser and are not synced with the account; only the dashboard layout and the time zone are stored on the server.
 - There is only the one shell tour; per-page tours do not exist yet.
@@ -128,20 +128,20 @@ Every 10 minutes, and whenever the browser tab regains focus (at most once a min
 - Changing the time zone does not convert already-open tabs until their data is refreshed.
 - Quick ranges like "today" in the filter bar use the browser's local time, while the dashboard's "today" uses the display time zone; when the two differ, a details link from the dashboard may be off by a day (inferred from the code, not covered by a test).
 
-## Where is the code?
+## Source code
 
 - Dashboard: [`pages/dashboard/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/dashboard) (`layout.ts` compatibility rules, `editor.tsx` edit mode, `cards/`) · preference endpoints `/me/preferences/{key}` in [`api/v1/sys/user.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/api/v1/sys/user.py) · rules in [`dashboard/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/dashboard/AGENTS.md)
 - Shell: [`shell/command-menu.tsx`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/shell/command-menu.tsx) · [`shell/hotkeys.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/shell/hotkeys.ts) · [`shell/tour/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/shell/tour) · [`shell/preferences.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/shell/preferences.ts)
 - Lists: [`_shared/use-column-visibility.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/_shared/use-column-visibility.ts) · [`_shared/use-column-order.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/_shared/use-column-order.ts) · filter bar [`ui/components/query-bar/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/ui/src/components/query-bar)
 - Time display: [`i18n/src/datetime.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/i18n/src/datetime.ts) · new-version prompt [`apps/web/src/lib/app-version.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/src/lib/app-version.ts)
 
-## How is it tested?
+## Tests
 
 - Unit tests (Vitest): [`dashboard/layout.test.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/dashboard/layout.test.ts) (17 tests: new cards go last, an unreadable layout falls back to the default and is flagged, …), `card-rules.test.ts`, and the filter bar's `params.test.ts` (38 tests).
 - Backend: [`test_user_preference.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/tests/api_v1/test_user_preference.py) (an unsaved key reads as null, not 404; only your own preferences), `test_dashboard_ops.py` (visit stats cut days in the viewer's time zone).
 - In the browser (Playwright): [`dashboard-personalize.spec.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/tests/dashboard-personalize.spec.ts) (10 tests, including the same person in a second browser seeing the same layout, and a failed layout load showing an error with editing disabled), [`command-palette.spec.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/tests/command-palette.spec.ts) (`?` opens shortcuts, but typing a question mark in an input does not), [`tour.spec.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/tests/tour.spec.ts), [`new-version.spec.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/tests/new-version.spec.ts), [`query-bar.spec.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/tests/query-bar.spec.ts).
 - No E2E yet for appearance preferences, switching time zone, or column visibility.
 
-## Try it on the demo
+## Try the demo
 
 On the [live demo](https://fra.wubunan.com/sign-in) (`admin` / `123456`), click **Custom** on the dashboard, turn on **Announcement**, drag it to the top, make it 1/2 wide and save; sign in again from a private window and you get the same layout. Press ⌘K and type "用户" to jump to Users (menu titles are in Chinese on the demo); press `?` for all shortcuts. Everyone on the demo shares `admin`, including the dashboard layout, so please **Restore defaults** afterwards.

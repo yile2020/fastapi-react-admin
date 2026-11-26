@@ -1,5 +1,5 @@
 ---
-title: 从零加一个业务模块
+title: 新增业务模块
 description: 以「客户管理」为例，从模型、迁移、三层接口、菜单权限到列表页和数据权限，走通一个真实业务模块。
 sidebar:
   order: 1
@@ -18,7 +18,7 @@ sidebar:
 
 开始前先把服务跑起来（见[快速开始](/getting-started/quick-start/)），并读一遍根目录 `CLAUDE.md` 的硬纪律 1–6。
 
-## 模块长什么样？
+## 模块结构
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -44,7 +44,7 @@ apps/api/backend/app/crm/
 └─ tests/      __init__.py · test_customer.py
 ```
 
-## 第 1 步：写模型
+## 1. 写模型
 
 `apps/api/backend/app/crm/model/customer.py`：
 
@@ -89,7 +89,7 @@ from backend.app.crm.model.customer import Customer as Customer
 
 **验收**：模型还不会自己建表。下一步的迁移能看到 `crm_customer`，就说明它被加载了。
 
-## 第 2 步：生成迁移
+## 2. 生成迁移
 
 改完模型，生成一条迁移：
 
@@ -127,7 +127,7 @@ pnpm db:current
 改了模型就要生成迁移。`--reload` 只会重新 import 代码，不会改已经建好的表。测试 `test_model_matches_migrations` 会比对模型和数据库，漏了迁移会报红。
 :::
 
-## 第 3 步：写 schema
+## 3. 写 schema
 
 `apps/api/backend/app/crm/schema/customer.py`：
 
@@ -194,7 +194,7 @@ class GetCustomerDetail(CustomerSchemaBase):
 
 **验收**：等接口写好以后，提交一个 70 个字的 `name`，返回 422，提示「name 最长 64 个字符，收到 70 个」。
 
-## 第 4 步：写 crud（DAO）
+## 4. 写 crud（DAO）
 
 `apps/api/backend/app/crm/crud/crud_customer.py`：
 
@@ -268,7 +268,7 @@ customer_dao: CRUDCustomer = CRUDCustomer(Customer)
 - **分页必须带排序**（`select_order`）。SQL Server 的 `OFFSET … FETCH` 要求有 `ORDER BY`
 - **交给分页的那个 `Select` 里不能 join 多对多表**，否则 `total` 会按 join 之后的行数算，翻页也会错位。这张表没有多对多关系，不涉及
 
-## 第 5 步：写 service
+## 5. 写 service
 
 `apps/api/backend/app/crm/service/customer_service.py`：
 
@@ -346,7 +346,7 @@ customer_service: CustomerService = CustomerService()
 
 `backend/tests/test_i18n.py` 会检查两个语言包的键是否一致，以及代码里引用的键是否都存在。
 
-## 第 6 步：写 api 并注册路由
+## 6. 写 api 并注册路由
 
 `apps/api/backend/app/crm/api/v1/customer.py`：
 
@@ -482,7 +482,7 @@ curl -s -X POST http://127.0.0.1:8088/api/v1/crm/customers \
 
 再查一次列表，能看到这条记录。`id`、`dept_id`、`owner_id` 下发的都是字符串，比如 `"id":"2228321080542494720"`。
 
-## 第 7 步：加菜单和按钮权限码
+## 7. 加菜单与权限码
 
 后端用到了 4 个权限码，菜单表里要有对应的按钮行。非超管用户的权限码都来自自己角色挂的菜单，权限码不在任何菜单上，他就会一直收到 403。
 
@@ -491,7 +491,7 @@ curl -s -X POST http://127.0.0.1:8088/api/v1/crm/customers \
 - **只在自己的环境试一下**：去「系统管理 → 菜单管理」手动新建。先建一个目录「客户关系」（路由 `/crm`），再在下面建菜单「客户管理」（路由 `/crm/customer`），最后在菜单下建 4 个按钮，权限码分别填 `crm:customer:list` / `:add` / `:edit` / `:del`。这样建的菜单只存在于当前这个库里
 - **要随代码一起交付**：按下面的做法，种子 SQL 和数据迁移两边都要加
 
-### 为什么两边都要加？
+### 种子 SQL 与迁移
 
 | 库是怎么来的 | 菜单从哪来 |
 |---|---|
@@ -577,7 +577,7 @@ cd apps/api && pnpm seed:manifest --write
 - `downgrade -1` 后这 6 行和 `crm_customer` 表都消失，`upgrade` 后又回来
 - `app/admin/tests/security/test_permission_codes.py` 通过。它会核对后端 `RequestPermission`、前端 `<Can perm>` 和种子菜单这三边的权限码是否一致
 
-## 第 8 步：写前端列表页
+## 8. 写前端列表页
 
 一个页面由三部分组成，缺一个都不行：
 
@@ -1317,7 +1317,7 @@ pnpm lint
 上面这几条命令都实际跑过并通过了。浏览器里的效果（侧边栏、表单交互）没有在验证时截图确认，第一次跑的时候请自己点一遍。
 :::
 
-### 可选：让运营自己维护 `level` 的选项
+### 可选：字典化选项
 
 `level`（普通 / 重要 / VIP）这类**运营会改、会加**的选项，放进[数据字典](/features/config-dict/)比写死在页面里合适：在「系统管理 → 数据字典」建类型 `crm_level`，加三个字典项（值 `0` / `1` / `2`），页面里只写类型编码：
 
@@ -1334,7 +1334,7 @@ import { DictSelect, DictTag } from "../_shared/dict"
 - 字典项要**随代码交付**的话，和第 7 步的菜单一样：种子 SQL 和数据迁移两边都要加（`utils/data_migration.py` 里只有通用的 `insert_if_absent`，没有专门的字典辅助函数）；只在自己环境试，去页面里建就行
 - 这一小节的写法没有在本页的「客户管理」示例里跑过：示例里 `level` 仍是页面里写死的三个值。读字典这一层本身的测试和浏览器实测见 [`pages/_shared/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/_shared/AGENTS.md)
 
-## 第 9 步：让数据权限生效
+## 9. 让数据权限生效
 
 数据权限本身不用写代码，第 4 步继承 `DataScopedCRUD` 时就已经接上了。这一步是用页面把它配出来，确认它真的在起作用。机制见[数据权限](/features/data-permissions/)。
 
@@ -1363,7 +1363,7 @@ import { DictSelect, DictTag } from "../_shared/dict"
 `__ALL__` 规则落到一张没有对应列的表上时，这条规则会被跳过。如果角色的规则全都被跳过了，结果就是**放行全部**。所以如果你希望客户表按部门过滤，表上就一定要有 `dept_id` 列，并且新建的数据要把它填上。
 :::
 
-## 第 10 步：写测试
+## 10. 写测试
 
 新 app 的测试要先加到 `apps/api/pyproject.toml` 的 `testpaths` 里，否则 `pnpm test` 收集不到这些测试，而且不会给出任何提示：
 
@@ -1507,7 +1507,7 @@ cd apps/api && uv run --no-sync pytest \
 | 写了测试，`pnpm test` 照样全绿，但其实没跑到 | 新 app 的 `tests/` 目录没加进 `pyproject.toml` 的 `testpaths` |
 | 把模块拆成新的 workspace 包后，生产镜像构建报 `Cannot find module` | 只配了 alias / tsconfig 路径，没在依赖方的 `package.json` 里声明这个包。`pnpm arch:check` 会核对 |
 
-## 相关源码
+## 代码位置
 
 - [`backend/common/security/data_scope.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/common/security/data_scope.py)：`DataScopedCRUD`，以及它覆盖了哪几个读方法
 - [`backend/common/security/permission.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/common/security/permission.py)：规则怎么编译成 `WHERE` 条件

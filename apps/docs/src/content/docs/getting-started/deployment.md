@@ -7,7 +7,7 @@ sidebar:
 
 生产环境跑的是 CI 构建好的 Docker 镜像：`main` 每次全绿后，CI 把镜像推到 GitHub Container Registry（GHCR）。服务器上只需要 Docker 和三份文件：`docker-compose.prod.yml`、`prod.sh` 脚本、填好配置的 `.env.server`。`prod.sh up` 会先跑 Alembic 迁移，成功了才启动服务。
 
-## 生产环境跑了哪些服务
+## 服务组成
 
 `docker-compose.prod.yml` 启动 API、两个 Celery worker（`worker` 跑心跳、通知投递这类短任务，`worker-long` 跑导出、AI 预审、日志清理这类长任务）、单独的 Celery beat（调度器）和 web 容器（nginx 托管前端产物并反代 API）。数据库和 Redis 用你自己的，在 `.env.server` 里指过去。
 
@@ -15,7 +15,7 @@ sidebar:
 开发环境的 worker 内嵌了 beat（`celery worker -B`）。生产不能这么跑：多副本时每个副本都会起一个 beat，同一条定时任务会被触发 N 次。生产只跑一个 beat 容器。
 :::
 
-## 新服务器第一次怎么装
+## 首次安装
 
 不需要 clone 仓库：
 
@@ -51,7 +51,7 @@ bash prod.sh pull && bash prod.sh up
 - [ ] `.env.server` 里的 `CHANGE_ME` 全部换掉。`ENVIRONMENT='prod'` 时后端会逐项校验长度和随机性，弱值直接拒绝启动
 - [ ] `TOKEN_SECRET_KEY` 用 `python -c "import secrets;print(secrets.token_urlsafe(32))"` 新生成，不要从别的环境复制
 - [ ] `CORS_ALLOWED_ORIGINS` 写成你真实的访问地址；前面有 nginx 或负载均衡时配好 `TRUSTED_PROXIES`，否则限流和 IP 白名单看到的都是代理的地址
-- [ ] 在界面上配 SMTP 授权码等参数密钥的，配好 `CONFIG_ENCRYPT_SECRET_KEY`（`python -c "import secrets;print(secrets.token_hex(32))"` 生成并备份）—— 没配时保存会报错；**从 1.1.0 升级、库里已有这类值时没配它，迁移会中止**，见[从 1.1.0 升级](/reference/upgrade/#从-110-升级到-111-及以后)
+- [ ] 在界面上配 SMTP 授权码等参数密钥的，配好 `CONFIG_ENCRYPT_SECRET_KEY`（`python -c "import secrets;print(secrets.token_hex(32))"` 生成并备份）—— 没配时保存会报错；**从 1.1.0 升级、库里已有这类值时没配它，迁移会中止**，见[从 1.1.0 升级](/reference/upgrade/#升级到-111-及以后)
 - [ ] 用到 AI 助手、对象存储、群机器人、开放平台的，配好各自的加密密钥（`AI_ENCRYPT_SECRET_KEY`、`STORAGE_ENCRYPT_SECRET_KEY`、`NOTIFICATION_ENCRYPT_SECRET_KEY`、`OPEN_SECRET_KEY`）—— 没配时保存相应配置会直接报错，不会存明文
 - [ ] 数据库连接数够用：每个进程最多占 `DATABASE_POOL_SIZE + DATABASE_POOL_MAX_OVERFLOW`（默认 10 + 20）个连接，api 的 worker 数和 celery worker 进程数加起来乘上它，不能超过数据库的 `max_connections`，否则高峰期请求报 `too many clients` 失败。加 worker 前先算一下，不够就调小这两个值或调大数据库上限
 - [ ] 配好 `DATA_CHANGE_CHAIN_KEY`（`python -c "import os;print(os.urandom(32).hex())"`），并和数据库分开保管。数据变更记录的签名链靠它防篡改，留空时谁都能重算签名；**设了就别换**
@@ -63,7 +63,7 @@ bash prod.sh pull && bash prod.sh up
 - [ ] 日志留存符合你们的合规要求。登录日志、操作日志默认保留 180 天，因为《网络安全法》要求网络日志留存不少于六个月。要改天数，去「定时任务 → 任务调度 → 清理历史日志」改 `days` 参数；数据变更记录的保留天数在「参数配置 → 日志」里单独设。操作日志一条平均约 2 KB，每天记 1 万条的话，180 天大约 4 GB，按这个量预留磁盘
 - [ ] 记下当前镜像标签（`sha-<提交>`），出问题时知道回滚到哪
 
-## 怎么更新、怎么回滚
+## 更新与回滚
 
 ```bash
 bash prod.sh status   # 服务器上跑的是哪个提交，落后 main 多少
@@ -71,16 +71,16 @@ bash prod.sh pull
 bash prod.sh up
 ```
 
-CI 推了新镜像**不会**自动更新服务器，部署是人明确决定的一步。跨版本升级前先看目标版本的升级须知，从 1.1.0 升级要先配好 `CONFIG_ENCRYPT_SECRET_KEY`，见[版本升级](/reference/upgrade/#从-110-升级到-111-及以后)。每个镜像除了 `latest` 还带 `sha-<短 SHA>` 和 `sha-<完整 SHA>` 两种标签，回滚就是拉旧标签，不用等重新构建：
+CI 推了新镜像**不会**自动更新服务器，部署是人明确决定的一步。跨版本升级前先看目标版本的升级须知，从 1.1.0 升级要先配好 `CONFIG_ENCRYPT_SECRET_KEY`，见[版本升级](/reference/upgrade/#升级到-111-及以后)。每个镜像除了 `latest` 还带 `sha-<短 SHA>` 和 `sha-<完整 SHA>` 两种标签，回滚就是拉旧标签，不用等重新构建：
 
 ```bash
 TAG=sha-abc1234 bash prod.sh pull
 TAG=sha-abc1234 bash prod.sh up
 ```
 
-⚠️ 这样直接换镜像只适用于新旧两版之间**没有数据库迁移**的情况。带迁移的版本要先用新镜像降级数据库，否则旧镜像的 migrate 失败、整站停掉，步骤见[怎么回滚到旧版本？](/reference/upgrade/#怎么回滚到旧版本)。
+⚠️ 这样直接换镜像只适用于新旧两版之间**没有数据库迁移**的情况。带迁移的版本要先用新镜像降级数据库，否则旧镜像的 migrate 失败、整站停掉，步骤见[怎么回滚到旧版本？](/reference/upgrade/#回滚到旧版本)。
 
-## 外部监控探哪个地址
+## 外部监控
 
 只探一个：`https://<你的域名>/api/health/status`。它列出 API、数据库、Redis、调度器（beat）、worker 和长任务 worker（`worker_long`）的状态，全部正常返回 **200**，任何一项异常返回 **503**。
 
@@ -96,7 +96,7 @@ TAG=sha-abc1234 bash prod.sh up
 不要拿 `/healthz` 做外部监控。它是 nginx 自己返回的 `200`，API 和数据库全挂了照样是绿的。同理，经域名访问一个不存在的路径会落到前端的 history fallback，返回 `200` 加 `index.html`——判断时要看响应内容，不能只看状态码。
 :::
 
-## 能自己构建镜像吗
+## 自行构建镜像
 
 可以，用于服务器访问不了 GHCR 的情况，这时整个仓库要在那台机器上：
 
