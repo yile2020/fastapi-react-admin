@@ -10,7 +10,7 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from backend.app.admin.model import DataRule, DataScope, Dept, Menu, Role, Storage, User, UserMfa
+from backend.app.admin.model import DataRule, DataScope, Dept, Menu, Role, Storage, User, UserMfa, UserPasskey
 from backend.app.admin.model.m2m import data_scope_rule, role_data_scope, role_menu, user_role
 from backend.common.data_change import ChildValue, Ref, register_audited, register_audited_child, register_audited_set
 
@@ -52,6 +52,31 @@ register_audited_set(
     field='roles',
     label='角色',
     ref=Ref('sys_role', 'name'),
+)
+
+
+# 通行密钥：一个用户可以有多把，单独记成一类对象（名字 + 所属用户）—— 一对多没法像二次验证那样折叠成用户上的开关。
+# 「谁给这个账号加了一把通行密钥」「管理员清掉了他的通行密钥」都有记录；凭据 ID / 公钥是钥匙材料，
+# 记了没有可读的意义；计数和最近使用时间每次登录都写，记了就是刷屏
+register_audited(
+    UserPasskey,
+    entity='user_passkey',
+    title='通行密钥',
+    label='name',
+    fields={'name': '名称'},
+    refs={'user_id': ('所属用户', Ref('sys_user', 'username'))},
+    ignore={
+        'credential_hash',
+        'credential_id',
+        'public_key',
+        'sign_count',
+        'transports',
+        'aaguid',
+        'backed_up',
+        'last_used_time',
+        'created_time',
+        'updated_time',
+    },
 )
 
 
