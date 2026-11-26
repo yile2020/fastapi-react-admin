@@ -51,6 +51,42 @@ class DictDataService:
         return dict_datas
 
     @staticmethod
+    @cached(
+        namespace=settings.CACHE_DICT_REDIS_PREFIX,
+        key_builder=lambda *, db, code: f'options:{code}',
+    )
+    async def _get_option_items(*, db: AsyncSession, code: str) -> list[dict[str, str | None]] | None:
+        """
+        一个类型下启用的选项；**没有就返回 `None`**
+
+        🔴 返回 `None` 而不是 `[]`：`@cached` 对任何非 `None` 的结果都会缓存。这个接口任何登录用户都能调、
+        编码由调用方随便填，缓存空列表就等于让他能往 Redis 里刷任意多个 `options:<随便写>` 键（每个活两小时）。
+        查无的编码每次多一次按索引的查询，换来缓存键只会为真有选项的类型出现。
+        键放在 `CACHE_DICT_REDIS_PREFIX` 命名空间下，字典数据 / 类型的增删改整个命名空间一起清，不用另外接失效
+        """
+        rows = await dict_data_dao.get_options_by_type_code(db, code)
+        if not rows:
+            return None
+        return [{'label': r.label, 'value': r.value, 'color': r.color} for r in rows]
+
+    @staticmethod
+    async def get_options(*, db: AsyncSession, codes: Sequence[str]) -> dict[str, list[dict[str, str | None]]]:
+        """
+        批量取字典选项（`GET /dict-datas/options`）：每个请求的编码都有一个键，没有选项的是 `[]`
+
+        和 `get_by_type_code` 的区别：后者对空 / 不存在 / 全停用一律抛 404，调用方分不出是哪一种，
+        而「这个字典还没有选项」对一个下拉来说是正常状态（显示「暂无选项」），不是错误
+
+        :param db: 数据库会话
+        :param codes: 字典类型编码
+        :return:
+        """
+        result: dict[str, list[dict[str, str | None]]] = {}
+        for code in dict.fromkeys(codes):  # 去重、保序
+            result[code] = await DictDataService._get_option_items(db=db, code=code) or []
+        return result
+
+    @staticmethod
     async def get_all(*, db: AsyncSession) -> Sequence[DictData]:
         """
         获取所有字典数据

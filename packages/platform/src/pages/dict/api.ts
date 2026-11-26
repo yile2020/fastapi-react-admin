@@ -1,7 +1,7 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { api, type PageData } from '../../api-client/client'
-import { TONE_CLASS } from '../_shared/status'
+import type { DictColor } from '../_shared/dict-color'
 
 export type DictType = {
   id: string
@@ -126,20 +126,13 @@ export function useDeleteDictDatas(opts: { suppressErrorToast?: boolean } = {}) 
   })
 }
 
-/** 字典项的颜色标记 —— 后端存的是颜色名，这里映射到样式 */
-export const COLOR_ITEMS: Record<string, string> = {
-  default: '默认', primary: '主色', success: '成功', warning: '警告', red: '危险', gray: '灰色',
-}
 /**
- * 字典项的颜色（后端存的是色名，由用户在表单里挑）。
- * 与状态色同源 —— 三个重合的色板直接取 `_shared/status` 的 TONE_CLASS，
- * 不再各写一份 emerald/amber/destructive。
+ * 字典项「颜色标记」下拉里能挑的规范色名。类型写成 `Record<DictColor, string>`：
+ * `_shared/dict-color.ts` 新增一个规范色，这里不补就是类型错误。
+ *
+ * 样式在 `_shared/dict-color.ts`（`dictColorClass`）—— 种子里是 Ant Design 的色名，那边有别名映射；
+ * 这里原来的 `COLOR_CLASS` 只认 6 个键，其余静默回落成灰色，已经删了。
  */
-export const COLOR_CLASS: Record<string, string> = {
-  default: 'bg-muted text-foreground ring-border',
-  primary: 'bg-primary/10 text-primary ring-primary/25',
-  success: TONE_CLASS.success,
-  warning: TONE_CLASS.warning,
-  red: TONE_CLASS.danger,
-  gray: TONE_CLASS.muted,
+export const COLOR_ITEMS: Record<DictColor, string> = {
+  default: '默认', primary: '主色', success: '成功', info: '信息', warning: '警告', red: '危险', gray: '灰色',
 }

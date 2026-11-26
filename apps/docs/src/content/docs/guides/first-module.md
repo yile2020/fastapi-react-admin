@@ -1317,6 +1317,23 @@ pnpm lint
 上面这几条命令都实际跑过并通过了。浏览器里的效果（侧边栏、表单交互）没有在验证时截图确认，第一次跑的时候请自己点一遍。
 :::
 
+### 可选：让运营自己维护 `level` 的选项
+
+`level`（普通 / 重要 / VIP）这类**运营会改、会加**的选项，放进[数据字典](/features/config-dict/)比写死在页面里合适：在「系统管理 → 数据字典」建类型 `crm_level`，加三个字典项（值 `0` / `1` / `2`），页面里只写类型编码：
+
+```tsx
+import { DictSelect, DictTag } from "../_shared/dict"
+
+<DictTag code="crm_level" value={row.original.level} />                        {/* 表格列 */}
+<DictSelect code="crm_level" value={form.watch("level")}
+            onChange={(v) => form.setValue("level", Number(v))} />           {/* 表单：值是字符串 */}
+```
+
+- 读字典的接口**登录即可**，不要字典管理权限；字典里没有的值（项被停用、删除）显示成灰色原值，取不到时标签可点击重试
+- 🔴 **不要拿它管和后端枚举绑死的值**。上面的 `status`（0 停用 / 1 正常）后端用 `StatusType` 校验，改字典不会让后端跟着变，仍用 `StatusBadge`
+- 字典项要**随代码交付**的话，和第 7 步的菜单一样：种子 SQL 和数据迁移两边都要加（`utils/data_migration.py` 里只有通用的 `insert_if_absent`，没有专门的字典辅助函数）；只在自己环境试，去页面里建就行
+- 这一小节的写法没有在本页的「客户管理」示例里跑过：示例里 `level` 仍是页面里写死的三个值。读字典这一层本身的测试和浏览器实测见 [`pages/_shared/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/_shared/AGENTS.md)
+
 ## 第 9 步：让数据权限生效
 
 数据权限本身不用写代码，第 4 步继承 `DataScopedCRUD` 时就已经接上了。这一步是用页面把它配出来，确认它真的在起作用。机制见[数据权限](/features/data-permissions/)。

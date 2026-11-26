@@ -1806,6 +1806,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sys/dict-datas/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 批量获取字典选项（登录即可）
+         * @description 给下拉 / 标签用：只返回启用的选项、按排序升序；请求的每个编码都有一个键，没有选项的是空数组。不要求字典管理权限 —— 普通页面的下拉得能读到它自己用的字典；字典**管理**接口照旧要 `dict:data:*`
+         */
+        get: operations["get_dict_options_api_v1_sys_dict_datas_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sys/dict-datas/import/template": {
         parameters: {
             query?: never;
@@ -6891,6 +6911,27 @@ export interface components {
              * @description 更新时间
              */
             updated_time?: string | null;
+        };
+        /**
+         * GetDictOption
+         * @description 字典选项（给前端下拉 / 标签用，只带展示要用的字段）
+         */
+        GetDictOption: {
+            /**
+             * Label
+             * @description 字典标签
+             */
+            label: string;
+            /**
+             * Value
+             * @description 字典值（永远是字符串，数字类的字典也是）
+             */
+            value: string;
+            /**
+             * Color
+             * @description 标签颜色
+             */
+            color?: string | null;
         };
         /**
          * GetDictTypeDetail
@@ -13019,6 +13060,25 @@ export interface components {
             /** Data */
             data: {
                 [key: string]: unknown;
+            };
+        };
+        /** ResponseSchemaModel[dict[str, list[GetDictOption]]] */
+        ResponseSchemaModel_dict_str__list_GetDictOption___: {
+            /**
+             * Code
+             * @description 返回状态码
+             * @default 200
+             */
+            code: number;
+            /**
+             * Msg
+             * @description 返回信息
+             * @default 请求成功
+             */
+            msg: string;
+            /** Data */
+            data: {
+                [key: string]: components["schemas"]["GetDictOption"][];
             };
         };
         /** ResponseSchemaModel[list[GetBotDetail]] */
@@ -19509,6 +19569,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResponseSchemaModel_list_GetDictDataDetail__"];
+                };
+            };
+        };
+    };
+    get_dict_options_api_v1_sys_dict_datas_options_get: {
+        parameters: {
+            query: {
+                /** @description 字典类型编码，可重复传多个（最多 20 个） */
+                codes: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseSchemaModel_dict_str__list_GetDictOption___"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

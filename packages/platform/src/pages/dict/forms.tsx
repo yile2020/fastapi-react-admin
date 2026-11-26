@@ -18,8 +18,9 @@ import { Textarea } from '@admin/ui/components/textarea'
 
 import { ApiError } from '../../api-client/errors'
 import { useFieldError } from '../_shared/form-error'
+import { canonicalDictColor, dictColorClass } from '../_shared/dict-color'
 import {
-  COLOR_CLASS, COLOR_ITEMS,
+  COLOR_ITEMS,
   useCreateDictData, useCreateDictType, useUpdateDictData, useUpdateDictType,
   type DictData, type DictType,
 } from './api'
@@ -154,7 +155,8 @@ export function DictDataSheet({ open, onOpenChange, editing, typeId, typeName }:
     setErr(null)
     form.reset(editing
       ? {
-          label: editing.label, value: editing.value, color: editing.color ?? 'default',
+          // 种子里是 Ant Design 的色名（processing / magenta…）：下拉里没有这些选项，原样放进去会显示成裸文字
+          label: editing.label, value: editing.value, color: canonicalDictColor(editing.color),
           sort: editing.sort, status: editing.status, remark: editing.remark ?? '',
         }
       : { label: '', value: '', color: 'default', sort: 0, status: 1, remark: '' })
@@ -209,7 +211,7 @@ export function DictDataSheet({ open, onOpenChange, editing, typeId, typeName }:
                     {Object.entries(COLOR_ITEMS).map(([v, l]) => <SelectItem key={v} value={v}>{t(l)}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <span className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs ring-1 ${COLOR_CLASS[color] ?? COLOR_CLASS.default}`}>
+                <span className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs ring-1 ${dictColorClass(color)}`}>
                   {form.watch('label') || t('预览')}
                 </span>
               </div>

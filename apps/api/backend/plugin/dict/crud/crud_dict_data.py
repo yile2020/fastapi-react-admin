@@ -43,6 +43,27 @@ class CRUDDictData(DataScopedCRUD[DictData]):
             deleted=0,
         )
 
+    async def get_options_by_type_code(self, db: AsyncSession, type_code: str) -> Sequence[DictData]:
+        """
+        给前端下拉 / 标签用的选项：只要启用的，按 `sort` **升序**（同值按 id，保证顺序稳定）
+
+        ⚠️ 和 `get_by_type_code` 刻意不同：那个是上游遗留的 `sort` 降序，而字典管理页的分页列表是升序，
+        下拉照它的顺序排就会和管理员在字典页看到的相反。老接口没有前端消费者，但不动它 ——
+        改了会让装了这个插件的下游静默换顺序
+
+        :param db: 数据库会话
+        :param type_code: 字典类型编码
+        :return:
+        """
+        return await self.select_models_order(
+            db,
+            sort_columns=['sort', 'id'],
+            sort_orders=['asc', 'asc'],
+            type_code=type_code,
+            status=StatusType.enable.value,
+            deleted=0,
+        )
+
     async def get_all(self, db: AsyncSession) -> Sequence[DictData]:
         """
         获取所有字典数据

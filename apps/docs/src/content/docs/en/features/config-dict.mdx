@@ -60,9 +60,30 @@ Two levels:
 - **Dictionary type**: name, code (unique), remark.
 - **Dictionary item**: its type's code, label, value, colour, sort order, status (normal / disabled), remark. Labels are unique within a type.
 
-Business code fetches a type's options with `GET /api/v1/sys/dict-datas/type-codes/{code}`, which returns only enabled items, sorted by sort order **descending**; the result is cached in Redis for 2 hours and the cache is cleared when items change. Items can be [imported and exported](/en/features/import-export/), matched to existing items by type code + label.
+### How does a business page read a dictionary?
 
-⚠️ **None of the built-in pages read the dictionary yet**: labels like notice type or status are hard-coded in each page, and only the dictionary page itself calls the dictionary API. The dictionary is there for your own business pages, and the frontend has no ready-made "fetch a dictionary type" hook yet.
+The frontend has three things in `_shared/dict.tsx`; you only pass the dictionary type code:
+
+```tsx
+import { DictSelect, DictTag, useDict } from '../_shared/dict'
+
+<DictTag code="crm_level" value={row.level} />                    {/* in a table: value → coloured tag */}
+<DictSelect code="crm_level" value={level} onChange={setLevel} />  {/* form dropdown, the value is a string */}
+const level = useDict('crm_level')   // when you need the options yourself: level.options / level.labelOf(value)
+```
+
+They call `GET /api/v1/sys/dict-datas/options?codes=a&codes=b`:
+
+- **Sign-in is enough, no dictionary-management permission needed.** An ordinary page's dropdown must be able to read the dictionary it uses; the dictionary **management** endpoints still require `dict:data:*`.
+- Up to 20 codes per request, and every code gets a key: **a type with no options returns `[]`, not 404** (the old endpoint returns 404 for "no such type", "type is empty" and "all items disabled" alike, so the caller cannot tell them apart).
+- Only enabled items, sorted by sort order **ascending**, the same order the dictionary page shows.
+- The result is cached in Redis for 2 hours, and adding, editing or deleting items and types clears it. Codes that match nothing are not cached, so a caller cannot fill Redis with made-up codes.
+
+The old `GET /api/v1/sys/dict-datas/type-codes/{code}` is still there, but it needs the `dict:data:list` permission, returns 404 for an empty type and sorts **descending**; business pages should not use it. Items can be [imported and exported](/en/features/import-export/), matched to existing items by type code + label.
+
+⚠️ **Use the dictionary for enums that operators maintain themselves** (customer level, ticket category, …). The built-in pages' menu type, sign-in status and data-rule operators are **tied to enums in the backend code**; changing the dictionary would not change the backend, so they are not wired to it and stay in the page.
+
+⚠️ When loading fails, `DictTag` shows the raw value (dotted underline, click to retry) and `DictSelect` is disabled with "Failed to load · Retry" — never a blank. A value the dictionary does not have (item disabled or deleted, but still in old data) is shown as a grey tag with the raw value.
 
 ## Which settings are there?
 
@@ -83,19 +104,21 @@ Rules and pitfalls are in [`pages/config/AGENTS.md`](https://github.com/yile2020
 
 - **Password-like values are only hidden on screen**: keys whose name looks like a secret, such as the email password, are shown in a password box that can be revealed, but the API returns them in plain text, so anyone who can open the Config page can read them. Data change history records only that they changed, not the value.
 - Keys you add yourself have no validation and no generic accessor; the "visible to frontend" flag has no effect in the backend.
-- Editing or deleting a dictionary **type** does not clear the dictionary cache, so the change can take up to 2 hours to show; changing a type's code does not update its items' type code.
-- The dictionary page's colour options don't match the colours used in the seed data, so some seeded items show the default style.
+- The dictionary has no "built-in, read-only" flag: an admin can delete or change seeded items (such as "Normal" in "General status"). No built-in page depends on them, but once your own business page reads one, a deleted value shows as a grey raw value.
+- A label is one piece of Chinese text in the database; the English UI translates it by that text through the language pack: translated if the pack has that exact text, not translated if an admin typed it.
+- The dictionary page lets you pick only 7 canonical colours (default, primary, success, info, warning, danger, grey). The Ant Design colour names used in the seed data (`green`, `processing`, `magenta`, …) are mapped to these by meaning on the frontend, without changing what is stored; editing and saving such an item stores the canonical name.
 - Neither the Config page nor the dictionary page has a dedicated E2E test.
 
 ## Where is the code?
 
 - Config: [`plugin/config/`](https://github.com/yile2020/fastapi-react-admin/tree/main/apps/api/backend/plugin/config) · runtime loading and validation [`utils/dynamic_config.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/utils/dynamic_config.py) · frontend [`pages/config/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/config) (`registry.ts` holds each item's metadata)
-- Data dictionary: [`plugin/dict/`](https://github.com/yile2020/fastapi-react-admin/tree/main/apps/api/backend/plugin/dict) · frontend [`pages/dict/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/dict)
+- Data dictionary: [`plugin/dict/`](https://github.com/yile2020/fastapi-react-admin/tree/main/apps/api/backend/plugin/dict) · frontend [`pages/dict/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/dict) · the hook and components business pages use to read a dictionary [`_shared/dict.tsx`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/_shared/dict.tsx), colour mapping [`_shared/dict-color.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/_shared/dict-color.ts)
 
 ## How is it tested?
 
 - [`test_dynamic_config_bounds.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/tests/api_v1/test_dynamic_config_bounds.py): backend bounds reconciled with the frontend `registry.ts`, out-of-range writes refused. [`test_dynamic_config.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/tests/api_v1/test_dynamic_config.py): fallbacks on read. [`test_upload_policy_config.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/tests/api_v1/test_upload_policy_config.py): the file upload group. `test_mfa.py` covers "two-factor cannot be required without a key" and "the config list does not 500 because of one old value that no longer validates".
 - Dictionary import and export are covered in `test_import.py` and `test_export.py`.
+- The read endpoint: [`test_dict_options.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/dict/tests/test_dict_options.py), 11 cases — an account without dictionary permission can read, empty / missing / all-disabled types return `[]`, ascending order, unmatched codes write no cache key, and the next read sees changes after an add / edit / delete. On the frontend, [`dict-color.test.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/_shared/dict-color.test.ts) and [`dict.test.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/_shared/dict.test.ts) have 16 cases between them; one reads the seed SQL and fails when the seed uses a colour name the frontend does not map.
 - No dedicated browser tests; the E2E global setup turns off the image captcha through the Config API.
 
 ## Try it on the demo

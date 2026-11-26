@@ -27,8 +27,9 @@ import { BulkBar, RefreshButton, ResetButton, TextFilter } from '../_shared/filt
 import { logFeatures as features } from '../_shared/log-features'
 import { buildSelectColumn } from '../_shared/select-column'
 import { StatusBadge } from '../_shared/status'
+import { dictColorClass } from '../_shared/dict-color'
 import {
-  COLOR_CLASS, dictKeys, dictDatasQuery, dictTypesQuery,
+  dictKeys, dictDatasQuery, dictTypesQuery,
   useDeleteDictDatas, useDeleteDictTypes, type DictData, type DictType,
 } from './api'
 import { DictDataSheet, DictTypeSheet } from './forms'
@@ -164,7 +165,7 @@ export function DictPage({
           <span
             className={cn(
               'inline-flex rounded-full px-2 py-0.5 text-xs ring-1',
-              COLOR_CLASS[row.original.color ?? 'default'] ?? COLOR_CLASS.default
+              dictColorClass(row.original.color)
             )}
           >
             {getValue()}
