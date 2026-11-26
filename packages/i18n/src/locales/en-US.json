@@ -789,6 +789,7 @@
   "厂商配置": "Provider settings",
   "历史密码检查": "Password history check",
   "压缩包": "Archive",
+  "原值：{{value}}": "Current value: {{value}}",
   "原因": "Reason",
   "原始文件名": "Original name",
   "原生 SQL Server": "Native SQL Server",

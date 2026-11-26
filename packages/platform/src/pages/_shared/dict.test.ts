@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { dictKeys } from '../dict/api'
-import { buildDict, dictOptionsKey, dictOptionsQuery, type DictOption } from './dict'
+import { buildDict, dictOptionsKey, dictOptionsQuery, failedWithoutData, type DictOption } from './dict'
 
 const ITEMS: DictOption[] = [
   { label: '正常', value: '1', color: 'green' },
@@ -65,5 +65,44 @@ describe('buildDict', () => {
     const empty = buildDict([], upper)
     expect(empty.options).toEqual([])
     expect(empty.labelOf('x')).toBe('x')
+  })
+})
+
+describe('评审跟进（#452）', () => {
+  it('🔴 同值只留排序靠前的一项 —— 库里只约束「类型 + 标签」唯一，值可以重复', () => {
+    const d = buildDict(
+      [
+        { label: '重要', value: '1', color: 'red' },
+        { label: '重点', value: '1', color: 'green' },
+        { label: '普通', value: '0', color: null },
+      ],
+      upper
+    )
+    expect(d.options.map((o) => o.value)).toEqual(['1', '0']) // 下拉里不再有两个同 key 的项
+    expect(d.labelOf(1)).toBe('«重要»') // 不是后写的「重点」
+    expect(d.find('1')?.color).toBe('red')
+    expect(d.items).toHaveLength(2)
+  })
+
+  it('filterItems 不放值为 all 的项 —— 那是 SelectFilter 的「不筛」哨兵，放进来会顶掉「全部」', () => {
+    const d = buildDict(
+      [
+        { label: '全部门', value: 'all', color: null },
+        { label: '本部门', value: 'mine', color: null },
+      ],
+      upper
+    )
+    const items = d.filterItems('全部')
+    expect(items.all).toBe('全部')
+    expect(items.mine).toBe('«本部门»')
+    expect(Object.keys(items)).toHaveLength(2)
+    expect(d.options).toHaveLength(2) // 下拉 / QueryBar 那边照常有它
+  })
+
+  it('🔴 有数据时重取失败不算「取不到」—— 别把用户正在看的标签抽走', () => {
+    expect(failedWithoutData({ isError: true, data: undefined })).toBe(true)
+    expect(failedWithoutData({ isError: true, data: [] })).toBe(false) // 上次成功拿到的是空字典，也算有数据
+    expect(failedWithoutData({ isError: true, data: ITEMS })).toBe(false)
+    expect(failedWithoutData({ isError: false, data: undefined })).toBe(false)
   })
 })

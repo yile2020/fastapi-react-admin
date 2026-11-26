@@ -76,8 +76,8 @@ const level = useDict('crm_level')   // 要自己拿选项时：level.options / 
 
 - **登录即可，不要字典管理权限**。普通页面的下拉得能读到自己用的字典；字典**管理**接口照旧要 `dict:data:*`。
 - 一次最多 20 个编码，每个编码都有一个键：**没有选项的返回 `[]`，不是 404**（老接口对「没有这个类型 / 类型是空的 / 项全被停用」一律 404，调用方分不出是哪一种）。
-- 只返回状态正常的项，按排序值**从小到大**排，和字典页看到的顺序一致。
-- 结果在 Redis 里缓存 2 小时；增、改、删字典项和类型都会清缓存。查无的编码不进缓存，所以调用方乱填编码刷不出缓存键。
+- 只返回状态正常的项，按排序值**从小到大**排，和字典页看到的顺序一致。同一类型里值重复的项（库里只约束标签唯一），前端只认排序靠前的那一项。
+- 结果在 Redis 里缓存 2 小时；增、改、删、导入字典项和改删类型都会清缓存。查无的编码不进缓存，所以调用方乱填编码刷不出缓存键；没命中缓存的编码合成一条查询，一次请求最多查一次库。
 
 老接口 `GET /api/v1/sys/dict-datas/type-codes/{编码}` 还在，但要 `dict:data:list` 权限、空类型 404、按排序值**从大到小**排，业务页面不要用它。字典项能[导入导出](/features/import-export/)，按「类型编码 + 标签」匹配已有的项。
 
@@ -106,7 +106,8 @@ const level = useDict('crm_level')   // 要自己拿选项时：level.options / 
 - 自己加的键没有校验、没有通用读取方式；「是否前端可见」这个字段在后端没有任何作用。
 - 字典没有「内置只读」标记：管理员能删掉或改掉种子里的项（比如「通用状态」的「正常」）。没有页面依赖它们，但你自己的业务页面一旦读了，被删的值会显示成灰色原值。
 - 标签是数据库里的一段中文，英文界面靠语言包按原文翻译：语言包里有这条原文就译，管理员自己敲的不会翻。
-- 颜色在字典页里只能挑 7 个规范色（默认、主色、成功、信息、警告、危险、灰色）。种子里用的 Ant Design 色名（`green`、`processing`、`magenta`……）前端按语义映射到这几个，不改库里存的值；编辑这类项再保存，会存成规范色名。
+- **没有按类型控制谁能读**：任何登录用户都能通过上面那个接口读到所有字典的标签和值（字典**管理**接口照旧要权限）。只该部分人看到的分类别放进字典。
+- 颜色在字典页里只能挑 7 个规范色（默认、主色、成功、信息、警告、危险、灰色）。种子里用的 Ant Design 色名（`green`、`processing`、`magenta`……）前端按语义映射到这几个，不改库里存的值；编辑这类项时下拉里显示「原值：…」，不动颜色就原样存回去。
 - 参数配置页和字典页都没有专门的 E2E。
 
 ## 代码在哪
@@ -118,7 +119,7 @@ const level = useDict('crm_level')   // 要自己拿选项时：level.options / 
 
 - [`test_dynamic_config_bounds.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/tests/api_v1/test_dynamic_config_bounds.py)：后端范围和前端 `registry.ts` 对账、越界写入被拒。[`test_dynamic_config.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/tests/api_v1/test_dynamic_config.py)：读取时的回落。[`test_upload_policy_config.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/tests/api_v1/test_upload_policy_config.py)：文件上传组。`test_mfa.py` 里有「没配密钥不能强制二次验证」「配置列表不因一个已不合法的旧值整个 500」。
 - 字典的导入导出在 `test_import.py`、`test_export.py` 里。
-- 读字典的接口：[`test_dict_options.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/dict/tests/test_dict_options.py) 11 条，没有字典权限的账号能读、空 / 不存在 / 全停用都是 `[]`、顺序升序、查无的编码不写缓存、增改删后下一次读到新值。前端的 [`dict-color.test.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/_shared/dict-color.test.ts) 和 [`dict.test.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/_shared/dict.test.ts) 共 16 条，其中一条会读种子 SQL，种子里出现前端没映射的色名就红。
+- 读字典的接口：[`test_dict_options.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/dict/tests/test_dict_options.py) 13 条，没有字典权限的账号能读、空 / 不存在 / 全停用都是 `[]`、顺序升序、查无的编码不写缓存、20 个查无的编码只查一次库、命中缓存不查库、增改删后下一次读到新值。前端的 [`dict-color.test.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/_shared/dict-color.test.ts) 和 [`dict.test.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/_shared/dict.test.ts) 共 23 条，其中一条会读种子 SQL，种子里出现前端没映射的色名就红。
 - 浏览器端没有专门的用例；E2E 的全局准备阶段通过接口关掉图形验证码，用的就是参数配置。
 
 ## 在演示站里试试

@@ -46,17 +46,27 @@ function normalize(color: string | null | undefined): string {
   return (color ?? '').trim().toLowerCase()
 }
 
+/**
+ * 🔴 **只认 `ALIASES` 自己的键，不能用 `in` / 直接下标。** `color` 是后端的自由文本（导入 xlsx 能写任意值），
+ * `'constructor' in ALIASES` 是 true、`ALIASES['constructor']` 是个函数 —— 原型链上的属性会被当成别名，
+ * 标签的 class 变成 `undefined`。色名先转了小写，所以能撞上的是 `constructor` / `__proto__` 这类全小写的原型属性
+ * （`toString` 转成 `tostring` 就不在原型链上了）
+ */
+function alias(c: string): DictColor | undefined {
+  return Object.hasOwn(ALIASES, c) ? ALIASES[c] : undefined
+}
+
 /** 这个色名前端认不认（规范名或别名）。空值算认 —— 空就是「默认」 */
 export function isKnownDictColor(color: string | null | undefined): boolean {
   const c = normalize(color)
-  return c === '' || CANONICAL.has(c) || c in ALIASES
+  return c === '' || CANONICAL.has(c) || alias(c) !== undefined
 }
 
 /** 任意色名 → 规范色名。认不出的落回 `default`（灰底），不会报错 */
 export function canonicalDictColor(color: string | null | undefined): DictColor {
   const c = normalize(color)
   if (CANONICAL.has(c)) return c as DictColor
-  return ALIASES[c] ?? 'default'
+  return alias(c) ?? 'default'
 }
 
 /**

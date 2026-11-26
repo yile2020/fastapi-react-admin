@@ -76,3 +76,13 @@ describe('种子字典里的色名', () => {
     expect(unknown).toEqual([])
   })
 })
+
+describe('原型链上的键（#452 评审）', () => {
+  // color 是后端的自由文本，导入 xlsx 能写任意值；`'constructor' in {}` 是 true。
+  // 色名先转小写，真正能撞上原型链的是全小写的 constructor / __proto__（大小写混写的也会被转成它们）
+  it.each(['constructor', '__proto__', 'Constructor', ' __PROTO__ '])('%s 不算认得的色名、落回 default', (c) => {
+    expect(isKnownDictColor(c)).toBe(false)
+    expect(canonicalDictColor(c)).toBe('default')
+    expect(dictColorClass(c)).toBe(DICT_COLOR_CLASS.default)
+  })
+})

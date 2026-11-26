@@ -8,6 +8,7 @@
 import uuid
 
 from collections.abc import Iterator
+from typing import Self
 
 import pytest
 import sqlalchemy as sa
@@ -184,3 +185,42 @@ def test_writes_to_items_and_types_show_up_in_the_next_read(
     # 删类型：选项跟着没
     assert client.request('DELETE', TYPES, headers=token_headers, json={'pks': [seeded[FULL]]}).json()['code'] == 200
     assert _options(client, token_headers, FULL).json()['data'] == {FULL: []}
+
+
+class _CountDictSql:
+    """数这次请求里真正发到数据库、碰了 `sys_dict_data` 的语句（引擎级事件，异步引擎底下的同步引擎也算）"""
+
+    def __init__(self) -> None:
+        self.statements: list[str] = []
+
+    def _on(self, _conn, _cursor, statement, _params, _context, _executemany) -> None:
+        if 'sys_dict_data' in statement:
+            self.statements.append(statement)
+
+    def __enter__(self) -> Self:
+        sa.event.listen(sa.engine.Engine, 'before_cursor_execute', self._on)
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        sa.event.remove(sa.engine.Engine, 'before_cursor_execute', self._on)
+
+
+def test_twenty_unknown_codes_cost_one_query(client: TestClient, token_headers: dict[str, str]) -> None:
+    """🔴 查无的编码不进缓存，所以每次都要查库 —— 逐个查的话 20 个乱写的编码就是 20 条 SQL，任何登录用户都能反复刷"""
+    ghosts = [f'gz{_RUN}{i}' for i in range(20)]
+    with _CountDictSql() as sql:
+        resp = _options(client, token_headers, *ghosts)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()['data'] == {c: [] for c in ghosts}
+    assert len(sql.statements) == 1, f'应该合成一条 IN 查询，实际 {len(sql.statements)} 条'
+
+
+def test_a_fully_cached_request_does_not_touch_the_table(
+    client: TestClient, token_headers: dict[str, str], seeded: dict[str, str]
+) -> None:
+    first = _options(client, token_headers, FULL).json()['data'][FULL]  # 焐热
+    assert first, '前提：有选项（不然没有东西可缓存）'
+    with _CountDictSql() as sql:
+        again = _options(client, token_headers, FULL).json()['data'][FULL]
+    assert again == first
+    assert sql.statements == [], f'命中缓存还查了库：{sql.statements}'

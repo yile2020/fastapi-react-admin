@@ -18,7 +18,7 @@ import { Textarea } from '@admin/ui/components/textarea'
 
 import { ApiError } from '../../api-client/errors'
 import { useFieldError } from '../_shared/form-error'
-import { canonicalDictColor, dictColorClass } from '../_shared/dict-color'
+import { dictColorClass } from '../_shared/dict-color'
 import {
   COLOR_ITEMS,
   useCreateDictData, useCreateDictType, useUpdateDictData, useUpdateDictType,
@@ -155,8 +155,10 @@ export function DictDataSheet({ open, onOpenChange, editing, typeId, typeName }:
     setErr(null)
     form.reset(editing
       ? {
-          // 种子里是 Ant Design 的色名（processing / magenta…）：下拉里没有这些选项，原样放进去会显示成裸文字
-          label: editing.label, value: editing.value, color: canonicalDictColor(editing.color),
+          // 🔴 库里的色名**原样带回**，不规范化：种子里的 Ant Design 色名（processing / magenta…）和导入写进来的
+          // 任意色名（teal / #ff0000）不在下拉的 7 个里，规范化之后只改了标签保存，颜色也被静默改写（认不出的直接变 default）。
+          // 下拉里给原值补一项（见 colorItems），用户不碰颜色就原样存回去
+          label: editing.label, value: editing.value, color: editing.color ?? 'default',
           sort: editing.sort, status: editing.status, remark: editing.remark ?? '',
         }
       : { label: '', value: '', color: 'default', sort: 0, status: 1, remark: '' })
@@ -165,6 +167,13 @@ export function DictDataSheet({ open, onOpenChange, editing, typeId, typeName }:
   const pending = create.isPending || update.isPending
   const errs = form.formState.errors
   const color = form.watch('color') ?? 'default'
+  /** 7 个规范色；当前值不是其中之一时补一项「原值」，下拉不至于显示裸文字、保存也不改写它 */
+  const colorItems = React.useMemo(() => {
+    const entries: [string, string][] = Object.entries(COLOR_ITEMS).map(([k, v]) => [k, t(v)])
+    // 一次 fromEntries 建好，不写 `items[color] = …`：色名恰好是 `__proto__` 时赋值会被当成改原型、悄悄不生效
+    if (color && !Object.hasOwn(COLOR_ITEMS, color)) entries.push([color, t('原值：{{value}}', { value: color })])
+    return Object.fromEntries(entries)
+  }, [color, t])
   const statusItems = React.useMemo(
     () => Object.fromEntries(Object.entries(STATUS_ITEMS).map(([v, l]) => [v, t(l)])),
     [t]
@@ -204,11 +213,11 @@ export function DictDataSheet({ open, onOpenChange, editing, typeId, typeName }:
             </div>
             <Fld label={t("颜色标记")} error={fe(errs.color?.message)}>
               <div className="flex items-center gap-2">
-                <Select value={color} items={Object.fromEntries(Object.entries(COLOR_ITEMS).map(([k, v]) => [k, t(v)]))}
+                <Select value={color} items={colorItems}
                         onValueChange={(v) => form.setValue('color', v ?? undefined, { shouldValidate: true })}>
                   <SelectTrigger className="flex-1" data-testid="dd-color"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {Object.entries(COLOR_ITEMS).map(([v, l]) => <SelectItem key={v} value={v}>{t(l)}</SelectItem>)}
+                    {Object.entries(colorItems).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
                   </SelectContent>
                 </Select>
                 <span className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs ring-1 ${dictColorClass(color)}`}>

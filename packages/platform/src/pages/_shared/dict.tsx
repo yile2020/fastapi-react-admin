@@ -7,6 +7,7 @@ import { Skeleton } from '@admin/ui/components/skeleton'
 import { cn } from '@admin/ui/lib/utils'
 
 import { api } from '../../api-client/client'
+import { EmptyCell } from './cells'
 import { dictColorClass } from './dict-color'
 import { OptionsError } from './options-error'
 
@@ -50,16 +51,23 @@ export const dictOptionsQuery = (code: string) =>
 // ─── 模型（纯函数，好测） ─────────────────────────────────────────────────────
 
 export type Dict = {
-  /** 原样的选项（标签没翻译） */
+  /** 原样的选项（标签没翻译）。**同值只留排序靠前的那一项**，见 `buildDict` */
   items: readonly DictOption[]
   /** 给下拉 / 查询区用：标签已经过 `t()` */
   options: { value: string; label: string }[]
   /** 值 → 标签。**字典里没有这个值就原样返回值本身**（被停用 / 删掉的项，历史数据里还在） */
   labelOf: (value: string | number | boolean | null | undefined) => string
   find: (value: string | number | boolean | null | undefined) => DictOption | undefined
-  /** `SelectFilter` 的 `items`：`{ all: 「全部…」, 值: 标签 }`。⚠️ 数字样的值会被 JS 按数值顺序排，不跟 `sort`；要严格按 sort 用 `options` 喂 QueryBar */
+  /**
+   * `SelectFilter` 的 `items`：`{ all: 「全部…」, 值: 标签 }`。
+   * ⚠️ 数字样的值会被 JS 按数值顺序排，不跟 `sort`；要严格按 sort 用 `options` 喂 QueryBar。
+   * ⚠️ **值恰好是 `all` 的项不在里面**：`all` 是 `SelectFilter` 的「不筛」哨兵，放进来会顶掉「全部」、自己也永远筛不出来
+   */
   filterItems: (allLabel: string) => Record<string, string>
 }
+
+/** `SelectFilter` 用来表示「不筛」的值（见 `_shared/filters.tsx`） */
+const FILTER_ALL = 'all'
 
 /**
  * 字典值永远是**字符串**（`'1'`、`'true'`），而业务字段常常是数字 / 布尔 —— 比较前一律 `String()`，
@@ -68,18 +76,26 @@ export type Dict = {
 const key = (v: string | number | boolean | null | undefined): string => (v == null ? '' : String(v))
 
 export function buildDict(items: readonly DictOption[], translate: (s: string) => string): Dict {
-  const byValue = new Map(items.map((i) => [i.value, i]))
+  /*
+   * 🔴 **按值去重，留排序靠前的。** 库里只约束「类型 + 标签」唯一，值可以重复（「重要」=1、「重点」=1）。
+   * 不去重的话：值 → 标签取的是**后一项**，而下拉里两个同 key 的选项（React 报 duplicate key），选哪个提交的都是 1。
+   * 接口已经按 sort 升序给，第一次出现的就是排序靠前的那一项
+   */
+  const byValue = new Map<string, DictOption>()
+  for (const i of items) if (!byValue.has(i.value)) byValue.set(i.value, i)
+  const unique = [...byValue.values()]
   // 标签是库里的中文：仓库里写的（种子）在语言包里有 → 译；管理员自己敲的没有 → 原样（见 i18n 分册「谁写的」判据）
-  const options = items.map((i) => ({ value: i.value, label: translate(i.label) }))
+  const options = unique.map((i) => ({ value: i.value, label: translate(i.label) }))
   return {
-    items,
+    items: unique,
     options,
     find: (v) => byValue.get(key(v)),
     labelOf: (v) => {
       const hit = byValue.get(key(v))
       return hit ? translate(hit.label) : key(v)
     },
-    filterItems: (allLabel) => ({ all: allLabel, ...Object.fromEntries(options.map((o) => [o.value, o.label])) }),
+    // 🔴 「全部」**最后写**：值恰好是 all 的字典项会被它覆盖掉，而不是反过来把「全部」顶掉
+    filterItems: (allLabel) => ({ ...Object.fromEntries(options.map((o) => [o.value, o.label])), [FILTER_ALL]: allLabel }),
   }
 }
 
@@ -93,9 +109,19 @@ export type DictState = {
 }
 
 /**
+ * 「取不到」= 失败**而且手上没有数据**。
+ *
+ * 🔴 TanStack 在「已经有数据、后台重取失败」时是 `status: 'error'` 且**保留 `data`**。字典页的每次增删改都会让
+ * `['sys','dict']` 下的查询失效重取，窗口重新聚焦超过 `STALE_MS` 也会重取 —— 只要其中一次失败，直接看 `isError`
+ * 的话整列标签会退成原值、下拉被禁用，而缓存里的选项明明还在。把用户正在看的数据抽走是 pages 分册明令不做的事
+ */
+export const failedWithoutData = (q: { isError: boolean; data: unknown }): boolean => q.isError && q.data === undefined
+
+/**
  * 一个字典。同一个编码在一页里用多少次都只发一次请求（同 query key）。
  * 取不到时 `isError` 为真、`options` 是空 —— **调用方要把失败画出来**（`DictTag` / `DictSelect` 已经画了；
  * 自己拿 `options` 喂别的控件时配 `OptionsError`），别让它长得像「这个字典没有选项」（硬纪律 9）。
+ * 有上一次成功的数据时重取失败**不算** `isError`（见 `failedWithoutData`）。
  */
 export function useDict(code: string): Dict & DictState {
   const { t } = useTranslation()
@@ -105,7 +131,7 @@ export function useDict(code: string): Dict & DictState {
     ...dict,
     // 没传编码（enabled=false）时 isPending 永远是 true，不能让它转圈
     isPending: code !== '' && q.isPending,
-    isError: q.isError,
+    isError: failedWithoutData(q),
     error: q.error,
     refetch: () => void q.refetch(),
   }
@@ -118,8 +144,10 @@ export function useDict(code: string): Dict & DictState {
 export function useDicts<C extends string>(codes: readonly C[]): { dicts: Record<C, Dict> } & DictState {
   const { t } = useTranslation()
   const qc = useQueryClient()
-  const joined = codes.join('|')
-  const list = React.useMemo(() => [...new Set(joined.split('|'))].filter(Boolean).sort(), [joined])
+  // 依赖用 JSON 签名，不用 `codes.join('|')`：字典编码只限长度、不限字符，含 `|` 的编码会被 split 拆成两个
+  const sig = JSON.stringify(codes)
+  const requested = React.useMemo(() => (JSON.parse(sig) as string[]).filter(Boolean), [sig])
+  const list = React.useMemo(() => [...new Set(requested)].sort(), [requested])
   const q = useQuery({
     queryKey: [...DICT_OPTIONS_ROOT, 'batch', ...list],
     queryFn: async () => {
@@ -131,13 +159,16 @@ export function useDicts<C extends string>(codes: readonly C[]): { dicts: Record
     enabled: list.length > 0,
   })
   const dicts = React.useMemo(
-    () =>
-      Object.fromEntries(
-        joined.split('|').filter(Boolean).map((c) => [c, buildDict(q.data?.[c] ?? [], (s) => t(s))])
-      ) as Record<C, Dict>,
-    [joined, q.data, t]
+    () => Object.fromEntries(requested.map((c) => [c, buildDict(q.data?.[c] ?? [], (s) => t(s))])) as Record<C, Dict>,
+    [requested, q.data, t]
   )
-  return { dicts, isPending: list.length > 0 && q.isPending, isError: q.isError, error: q.error, refetch: () => void q.refetch() }
+  return {
+    dicts,
+    isPending: list.length > 0 && q.isPending,
+    isError: failedWithoutData(q),
+    error: q.error,
+    refetch: () => void q.refetch(),
+  }
 }
 
 // ─── 组件 ────────────────────────────────────────────────────────────────────
@@ -167,7 +198,7 @@ export function DictTag({
   const { t } = useTranslation()
   const dict = useDict(code)
   const v = key(value)
-  if (v === '') return <span className="text-muted-foreground">—</span>
+  if (v === '') return <EmptyCell />
   if (dict.isPending) return <Skeleton className="h-5 w-12 rounded-full" data-testid={testId} />
   if (dict.isError) {
     // 真按钮：整列都失败时，用户点任意一个就能重取（同一个编码共用一个 query，一次点击全列恢复）。
