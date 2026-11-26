@@ -95,8 +95,12 @@ const ctxFiles = allFiles
    *
    * `README.zh-CN.md` 这类语言变体原来也漏了（正则只认 `README.md`）：仓库首页的中文版
    * 在流量统计里是被单独点开最多的文件，指错路径同样没人报。
+   *
+   * `SKILL.md`（`.claude/skills/*`）是 2026-11-26 加的：技能是**照着做**的操作手册
+   * （「照 `pages/notice/` 抄」「跑 `pnpm arch:check`」），指错一个路径，照做的人就停在一个不存在的文件上 ——
+   * 而技能比分册更少有人回头读。加进来之前全仓的技能文件都不在任何检查里。
    */
-  .filter((f) => /(^|\/)(CLAUDE|AGENTS|README(\.[A-Za-z-]+)?|CONTRIBUTING|SECURITY|PORTING|PULL_REQUEST_TEMPLATE)\.md$/.test(f))
+  .filter((f) => /(^|\/)(CLAUDE|AGENTS|SKILL|README(\.[A-Za-z-]+)?|CONTRIBUTING|SECURITY|PORTING|PULL_REQUEST_TEMPLATE)\.md$/.test(f))
   // 每个模块目录下是 AGENTS.md（真身）+ CLAUDE.md（符号链接），
   // 不去重的话同一条问题会报两遍
   .filter((f) => !lstatSync(join(ROOT, f)).isSymbolicLink())

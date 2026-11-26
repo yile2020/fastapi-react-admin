@@ -1365,17 +1365,7 @@ import { DictSelect, DictTag } from "../_shared/dict"
 
 ## 10. 写测试
 
-新 app 的测试要先加到 `apps/api/pyproject.toml` 的 `testpaths` 里，否则 `pnpm test` 收集不到这些测试，而且不会给出任何提示：
-
-```toml
-testpaths = [
-  "backend/app/admin/tests",
-  "backend/app/task/tests",
-  "backend/app/crm/tests",
-  "backend/plugin",
-  "backend/tests"
-]
-```
+测试放在 `backend/app/crm/tests/` 下就会被 `pnpm test` 收集：`apps/api/pyproject.toml` 的 `testpaths` 写的是通配 `backend/app/*/tests`，不用再改它。放在别处（比如 app 根目录下的 `test_*.py`）则不会被收集，而且不会给出任何提示。
 
 `apps/api/backend/app/crm/tests/test_customer.py`（同目录要有一个空的 `__init__.py`）：
 
@@ -1504,7 +1494,7 @@ cd apps/api && uv run --no-sync pytest \
 | 接口失败时列表显示「暂无数据」 | 没用 `listState()`，漏了 `error`。把 `{...list}` 传给 `DataTable` |
 | 菜单管理把这一行标成死链 | 菜单的 `path` 和前端路由文件的路径不一致。另外路由文件和 `page-registry.tsx` 要成对出现，`pnpm arch:check` 会核对 registry |
 | `pnpm i18n:check` 报 `missing-keys` | 新文案没有加到两个语言包里 |
-| 写了测试，`pnpm test` 照样全绿，但其实没跑到 | 新 app 的 `tests/` 目录没加进 `pyproject.toml` 的 `testpaths` |
+| 写了测试，`pnpm test` 照样全绿，但其实没跑到 | 测试没放在 `backend/app/<app>/tests/` 下。`testpaths` 只通配这一层，放在 app 根目录或别的子目录里不会被收集 |
 | 把模块拆成新的 workspace 包后，生产镜像构建报 `Cannot find module` | 只配了 alias / tsconfig 路径，没在依赖方的 `package.json` 里声明这个包。`pnpm arch:check` 会核对 |
 
 ## 代码位置

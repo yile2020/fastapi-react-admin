@@ -213,7 +213,7 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
     if getattr(opt, 'keyword', None) or getattr(opt, 'markexpr', None):
         return
     # ⚠️ **要看真实命令行参数，不能看 `config.args`** —— 后者被 `pyproject.toml`
-    # 的 `testpaths` 填满了（四个目录），拿它判断会把「跑整套」也误判成局部，
+    # 的 `testpaths` 填满了（那几个目录），拿它判断会把「跑整套」也误判成局部，
     # 于是报告永远不出现（实测：全绿但一个字都不打）。
     cli = [a for a in config.invocation_params.args if not a.startswith('-')]
     if cli:

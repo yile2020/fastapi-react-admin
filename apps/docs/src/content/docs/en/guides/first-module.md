@@ -1365,17 +1365,7 @@ When an `__ALL__` rule meets a table without the matching column, that rule is s
 
 ## 10. Write tests
 
-First add the new app's tests to `testpaths` in `apps/api/pyproject.toml`. Otherwise `pnpm test` does not collect them, and nothing tells you:
-
-```toml
-testpaths = [
-  "backend/app/admin/tests",
-  "backend/app/task/tests",
-  "backend/app/crm/tests",
-  "backend/plugin",
-  "backend/tests"
-]
-```
+Tests under `backend/app/crm/tests/` are collected by `pnpm test`: `testpaths` in `apps/api/pyproject.toml` uses the wildcard `backend/app/*/tests`, so you don't edit it. Tests anywhere else (for example `test_*.py` in the app's root) are not collected, and nothing tells you.
 
 `apps/api/backend/app/crm/tests/test_customer.py` (with an empty `__init__.py` next to it):
 
@@ -1504,7 +1494,7 @@ cd apps/api && uv run --no-sync pytest \
 | The list shows "no data" when the request failed | `listState()` was not used and `error` was dropped. Spread `{...list}` into `DataTable` |
 | Menus marks the entry as a dead link | The menu's `path` does not match the frontend route path. The route file and `page-registry.tsx` also have to come in pairs; `pnpm arch:check` checks the registry |
 | `pnpm i18n:check` reports `missing-keys` | New strings were not added to both locale files |
-| You wrote tests and `pnpm test` is green, but they never ran | The new app's `tests/` directory is not in `testpaths` in `pyproject.toml` |
+| You wrote tests and `pnpm test` is green, but they never ran | The tests are not under `backend/app/<app>/tests/`. `testpaths` only matches that level, so tests in the app's root or another subdirectory are not collected |
 | After splitting the module into a new workspace package, the production image build fails with `Cannot find module` | Only an alias / tsconfig path was added; the package was not declared in the dependent's `package.json`. `pnpm arch:check` checks this |
 
 ## Source code
