@@ -26,6 +26,13 @@ const HOME_ONLY = [
 ]
 const SIZE_OK = /^(var\(--(fs|sl-text)-[\w-]+\)|inherit)$/
 const WEIGHT_OK = /^(var\(--fw-[\w-]+\)|400|500|600|normal|inherit)$/
+// `font:` 简写能一次写死字号和字重（`font: 600 13px/1.4 …`），只放行 inherit 和整条变量
+const FONT_OK = /^(inherit|var\(--[\w-]+\))$/
+const RULES = {
+  'font-size': [SIZE_OK, '用 var(--fs-*)'],
+  'font-weight': [WEIGHT_OK, '只用 400 / 500 / 600（var(--fw-*)）'],
+  font: [FONT_OK, '简写只写 inherit，字号和字重分开用 var(--fs-*) / var(--fw-*)'],
+}
 
 const files = (dir, ext) => readdirSync(join(ROOT, dir), { recursive: true, withFileTypes: true })
   .filter((e) => e.isFile() && ext.test(e.name)).map((e) => join(e.parentPath, e.name))
@@ -36,11 +43,10 @@ const styleFiles = [...files('src/styles', /\.css$/), ...files('src/components',
 for (const file of styleFiles) {
   readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
     if (line.includes('type-ok:')) return
-    for (const [, prop, value] of line.matchAll(/(?<![\w-])(font-size|font-weight)\s*:\s*([^;}]+)/g)) {
+    for (const [, prop, value] of line.matchAll(/(?<![\w-])(font-size|font-weight|font)\s*:\s*([^;}]+)/g)) {
       const v = value.trim().replace(/\s*!important$/, '')
-      if (!(prop === 'font-size' ? SIZE_OK : WEIGHT_OK).test(v)) {
-        problems.push(`${relative(ROOT, file)}:${i + 1}  ${prop}: ${v}  —— ${prop === 'font-size' ? '用 var(--fs-*)' : '只用 400 / 500 / 600（var(--fw-*)）'}`)
-      }
+      const [ok, hint] = RULES[prop]
+      if (!ok.test(v)) problems.push(`${relative(ROOT, file)}:${i + 1}  ${prop}: ${v}  —— ${hint}`)
     }
   })
 }

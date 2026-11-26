@@ -11,6 +11,10 @@
  * 目录全展开、照常能点。手机上的目录条是 Starlight 的 MobileTableOfContents，不走这里。
  */
 const { toc } = Astro.locals.starlightRoute
+type TocItem = NonNullable<typeof toc>['items'][number]
+// 目录只画两层：章节和它下面的小节。再深的标题（把 tableOfContents.maxHeadingLevel 调到 4 以上时才有）
+// 拍平进所在章节的小节列表，不能直接丢 —— 只渲染 children 那一层的话，第三层会静默消失
+const flat = (items: TocItem[]): TocItem[] => items.flatMap((i) => [i, ...flat(i.children)])
 const t = (zh: string, en: string) => (Astro.locals.starlightRoute.locale === 'en' ? en : zh)
 ---
 
@@ -53,7 +57,7 @@ const t = (zh: string, en: string) => (Astro.locals.starlightRoute.locale === 'e
                 </div>
                 {item.children.length > 0 && (
                   <ul class="toc-sub">
-                    {item.children.map((child) => (
+                    {flat(item.children).map((child) => (
                       <li><div class="toc-row" data-level="1"><a href={`#${child.slug}`}>{child.text}</a></div></li>
                     ))}
                   </ul>
