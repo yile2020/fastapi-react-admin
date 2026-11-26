@@ -1000,7 +1000,7 @@ import { QueryBar, countActive, type FilterField } from '@admin/ui/components/qu
 import { Can } from '../../auth/can'
 import { ConfirmDialog } from '../../shell/confirm-dialog'
 import { PageHeader } from '../../shell/page-header'
-import { PageShell } from '../_shared/page-shell'
+import { ListBody, PageShell } from '../_shared/page-shell'
 import { BulkBar, RefreshButton, ResetButton } from '../_shared/filters'
 import { listState } from '../_shared/list-query'
 import { DEFAULT_PAGE_SIZE } from '../_shared/pagination'
@@ -1135,7 +1135,7 @@ export function CustomerPage({
     <PageShell fill="always">
       <PageHeader title={t('客户管理')} description={t('维护客户档案；能看到哪些客户由数据权限决定。')} />
 
-      <div className="flex flex-col gap-4 content-scroll:min-h-0 content-scroll:flex-1">
+      <ListBody>
         <QueryBar
           fields={FIELDS}
           value={q.value}
@@ -1193,7 +1193,7 @@ export function CustomerPage({
             }}
           />
         </div>
-      </div>
+      </ListBody>
 
       <CustomerFormSheet open={sheetOpen} onOpenChange={setSheetOpen} editing={editing} />
 
@@ -1330,8 +1330,9 @@ import { DictSelect, DictTag } from "../_shared/dict"
 ```
 
 - 读字典的接口**登录即可**，不要字典管理权限；字典里没有的值（项被停用、删除）显示成灰色原值，取不到时标签可点击重试
+- 🔴 **改用字典之后，第 3 步 schema 里的 `le=2` 要去掉**，只留 `ge=0`：运营在字典里加了第四项，后端照旧只认 0–2，提交会被拒成 422
 - 🔴 **不要拿它管和后端枚举绑死的值**。上面的 `status`（0 停用 / 1 正常）后端用 `StatusType` 校验，改字典不会让后端跟着变，仍用 `StatusBadge`
-- 字典项要**随代码交付**的话，和第 7 步的菜单一样：种子 SQL 和数据迁移两边都要加（`utils/data_migration.py` 里只有通用的 `insert_if_absent`，没有专门的字典辅助函数）；只在自己环境试，去页面里建就行
+- 字典项要**随代码交付**的话，和第 7 步的菜单一样：种子 SQL（写进 `init_snowflake_test_data.sql`，和菜单同一份）和数据迁移两边都要加（`utils/data_migration.py` 里只有通用的 `insert_if_absent`，没有专门的字典辅助函数）；只在自己环境试，去页面里建就行
 - 这一小节的写法没有在本页的「客户管理」示例里跑过：示例里 `level` 仍是页面里写死的三个值。读字典这一层本身的测试和浏览器实测见 [`pages/_shared/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/_shared/AGENTS.md)
 
 ## 9. 让数据权限生效
