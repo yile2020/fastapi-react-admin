@@ -153,7 +153,13 @@ class NotificationService:
 
     @staticmethod
     async def get_list(
-        *, db: AsyncSession, viewer: Viewer, title: str | None, category: int | None, unread: bool | None
+        *,
+        db: AsyncSession,
+        viewer: Viewer,
+        title: str | None,
+        category: int | None,
+        unread: bool | None,
+        mine: bool = False,
     ) -> dict[str, Any]:
         """
         获取「我的通知」分页列表
@@ -163,9 +169,10 @@ class NotificationService:
         :param title: 标题（模糊匹配）
         :param category: 分类
         :param unread: True 只看未读、False 只看已读、None 不筛
+        :param mine: 只看点名发给我本人的（能删的）
         :return:
         """
-        select = await notification_dao.get_select(viewer, title, category, unread=unread)
+        select = await notification_dao.get_select(viewer, title, category, unread=unread, mine=mine)
         page_data = await paging_data(db, select)
 
         # 已读状态**不是** `sys_notification` 上的列（广播不 fan-out，见模型注释），
@@ -192,6 +199,8 @@ class NotificationService:
                 requires_ack=item['requires_ack'],
             )
             item['attachment_count'] = attachments.get(item.get('source') or '')
+            # 与 `notification_dao.get_own_ids` 同一个判据：点名给我本人的才能删（#449）
+            item['deletable'] = item['recipient_id'] == viewer.id
         return page_data
 
     @staticmethod
@@ -242,6 +251,57 @@ class NotificationService:
         """
         pks = await notification_dao.get_unread_ids(db, viewer)
         return await notification_dao.mark_read(db, viewer.id, pks)
+
+    @staticmethod
+    async def delete(*, db: AsyncSession, viewer: Viewer, pk: int) -> int:
+        """
+        删除一条我的通知（#449）。只有点名发给我本人的能删
+
+        🔴 广播、发给别人的、不存在的、已删的**一律 404**，不区分：区分开就是用一个写接口告诉调用方
+        「这条 ID 存在，只是不归你」（同 `mark_read`）
+
+        :param db: 数据库会话
+        :param viewer: 看的人
+        :param pk: 通知 ID
+        :return:
+        """
+        pks = await notification_dao.get_own_ids(db, viewer, [pk])
+        if not pks:
+            raise errors.NotFoundError(msg=t('error.notification.not_found'))
+        return await NotificationService._delete(db, viewer, pks)
+
+    @staticmethod
+    async def delete_many(*, db: AsyncSession, viewer: Viewer, pks: Sequence[int]) -> int:
+        """
+        批量删除我的通知。不是发给我本人的静默跳过（批量勾选里混进一条广播，不该整批失败）
+
+        :param db: 数据库会话
+        :param viewer: 看的人
+        :param pks: 通知 ID 列表
+        :return: 实际删除的条数
+        """
+        own = await notification_dao.get_own_ids(db, viewer, pks)
+        return await NotificationService._delete(db, viewer, own)
+
+    @staticmethod
+    async def delete_read(*, db: AsyncSession, viewer: Viewer) -> int:
+        """
+        清空已读：删掉发给我本人、且已读的全部通知。公告和全员广播不动
+
+        :param db: 数据库会话
+        :param viewer: 看的人
+        :return: 实际删除的条数
+        """
+        own = await notification_dao.get_own_ids(db, viewer, read_only=True)
+        return await NotificationService._delete(db, viewer, own)
+
+    @staticmethod
+    async def _delete(db: AsyncSession, viewer: Viewer, pks: Sequence[int]) -> int:
+        count = await notification_dao.delete_own(db, pks)
+        if count:
+            # 同一个人开着的其他标签页 / 设备：红点和列表跟着变。挂在提交之后，不然那边重拉到的还是旧数
+            run_after_commit(db, f'notification.push_user:{viewer.id}', lambda: _push(viewer.id))
+        return count
 
     @staticmethod
     async def send(*, db: AsyncSession, obj: SendNotificationParam) -> int:
