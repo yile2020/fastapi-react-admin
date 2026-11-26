@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "astro dev",
-    "build": "astro build && node scripts/check-links.mjs",
+    "build": "astro build && node scripts/check-links.mjs && node scripts/check-type.mjs && node scripts/check-headings.mjs",
     "preview": "astro preview",
     "og": "node scripts/gen-og.mjs"
   },

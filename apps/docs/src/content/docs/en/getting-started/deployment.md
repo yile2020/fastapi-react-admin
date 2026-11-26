@@ -1,5 +1,5 @@
 ---
-title: Deploying to a server
+title: Deployment
 description: Deploy fastapi-react-admin with Docker Compose from images CI pushes to GHCR — three files on the server, migrations before start, one health URL, rollback by commit tag.
 sidebar:
   order: 2
@@ -7,7 +7,7 @@ sidebar:
 
 Production runs from Docker images that CI builds and pushes to GitHub Container Registry (GHCR) after every green `main` build. The server only needs Docker and three files: `docker-compose.prod.yml`, the `prod.sh` script and an `.env.server` with your settings. `prod.sh up` runs Alembic migrations first and starts the services only if they succeed.
 
-## What runs in production?
+## Production services
 
 `docker-compose.prod.yml` starts the API, two Celery workers (`worker` for short tasks such as heartbeats and notification delivery, `worker-long` for long ones such as exports, AI pre-review and log pruning), a separate Celery beat (scheduler) and the web container (nginx serving the built frontend and proxying the API). The database and Redis are yours — point `.env.server` at them.
 
@@ -15,7 +15,7 @@ Production runs from Docker images that CI builds and pushes to GitHub Container
 In development the worker runs with an embedded beat (`celery worker -B`). Don't do that in production: with several replicas, every replica would run its own beat and each schedule would fire N times. Production runs exactly one beat container.
 :::
 
-## How do I install it on a new server?
+## First-time installation
 
 No repository clone is needed:
 
@@ -48,7 +48,7 @@ Back up the database before the first deployment against an existing one.
 - [ ] Every `CHANGE_ME` in `.env.server` is replaced. With `ENVIRONMENT='prod'` the backend checks length and randomness and refuses to start on weak values
 - [ ] `TOKEN_SECRET_KEY` is freshly generated (`python -c "import secrets;print(secrets.token_urlsafe(32))"`), not copied from another environment
 - [ ] `CORS_ALLOWED_ORIGINS` is your real address; behind nginx or a load balancer, `TRUSTED_PROXIES` is set — otherwise rate limits and IP allow-lists see the proxy's address
-- [ ] If you enter secrets such as the SMTP authorization code in the UI, `CONFIG_ENCRYPT_SECRET_KEY` is set (generate with `python -c "import secrets;print(secrets.token_hex(32))"` and back it up) — without it saving them fails. **Upgrading from 1.1.0 with such values already in the database and no key stops the migration** — see [Upgrading from 1.1.0](/en/reference/upgrade/#upgrading-from-110-to-111-or-later)
+- [ ] If you enter secrets such as the SMTP authorization code in the UI, `CONFIG_ENCRYPT_SECRET_KEY` is set (generate with `python -c "import secrets;print(secrets.token_hex(32))"` and back it up) — without it saving them fails. **Upgrading from 1.1.0 with such values already in the database and no key stops the migration** — see [Upgrading from 1.1.0](/en/reference/upgrade/#upgrading-to-111)
 - [ ] If you use the AI assistant, object storage, group bots or the open platform, their encryption keys are set (`AI_ENCRYPT_SECRET_KEY`, `STORAGE_ENCRYPT_SECRET_KEY`, `NOTIFICATION_ENCRYPT_SECRET_KEY`, `OPEN_SECRET_KEY`) — without them saving those settings fails instead of storing plaintext
 - [ ] There are enough database connections: each process holds up to `DATABASE_POOL_SIZE + DATABASE_POOL_MAX_OVERFLOW` (10 + 20 by default). Multiplied by the api workers plus the celery worker processes, that must stay below the database's `max_connections`, or requests fail with `too many clients` at peak load. Check before adding workers; lower these two values or raise the database limit if needed
 - [ ] `DATA_CHANGE_CHAIN_KEY` is set (`python -c "import os;print(os.urandom(32).hex())"`) and kept apart from the database. It makes the data-change signature chain tamper-evident; left empty, anyone can recompute the signatures. **Don't change it once set**
@@ -60,7 +60,7 @@ Back up the database before the first deployment against an existing one.
 - [ ] Log retention meets your compliance requirements. Login and operation logs are kept for 180 days by default, because China's Cybersecurity Law requires network logs to be kept for at least six months. To change it, edit the `days` argument of 清理历史日志 (prune old logs) under Scheduler → Task scheduling; data change records have their own retention setting under System config → Logs. An operation log row averages about 2 KB, so 10,000 rows a day for 180 days is roughly 4 GB; plan disk space accordingly
 - [ ] You noted the current image tag (`sha-<commit>`) so you know what to roll back to
 
-## How do I update or roll back?
+## Updates and rollback
 
 ```bash
 bash prod.sh status   # which commit is running, and how far behind main it is
@@ -68,16 +68,16 @@ bash prod.sh pull
 bash prod.sh up
 ```
 
-Pushing new images does **not** update servers automatically — deploying is a deliberate step. Before jumping versions, read the target version's upgrade notes; upgrading from 1.1.0 needs `CONFIG_ENCRYPT_SECRET_KEY` set first, see [Upgrading](/en/reference/upgrade/#upgrading-from-110-to-111-or-later). Every image is also tagged `sha-<short SHA>` and `sha-<full SHA>`, so rolling back is a pull of an older tag, without waiting for a build:
+Pushing new images does **not** update servers automatically — deploying is a deliberate step. Before jumping versions, read the target version's upgrade notes; upgrading from 1.1.0 needs `CONFIG_ENCRYPT_SECRET_KEY` set first, see [Upgrading](/en/reference/upgrade/#upgrading-to-111). Every image is also tagged `sha-<short SHA>` and `sha-<full SHA>`, so rolling back is a pull of an older tag, without waiting for a build:
 
 ```bash
 TAG=sha-abc1234 bash prod.sh pull
 TAG=sha-abc1234 bash prod.sh up
 ```
 
-⚠️ Swapping the image like this only works when there are **no database migrations** between the two versions. Otherwise downgrade the database with the new image first, or the old image's migrate step fails and the whole site stays down — see [How do I roll back to an older version?](/en/reference/upgrade/#how-do-i-roll-back-to-an-older-version).
+⚠️ Swapping the image like this only works when there are **no database migrations** between the two versions. Otherwise downgrade the database with the new image first, or the old image's migrate step fails and the whole site stays down — see [How do I roll back to an older version?](/en/reference/upgrade/#rolling-back).
 
-## What should external monitoring check?
+## External monitoring
 
 One URL: `https://<your-domain>/api/health/status`. It reports the API, database, Redis, scheduler (beat), worker and long-task worker (`worker_long`), and returns **200** only when all of them are healthy, **503** otherwise.
 
@@ -93,7 +93,7 @@ When upgrading from v1.1.3 or earlier, start the extra `worker-long` container (
 Don't monitor `/healthz`. It is nginx answering `200` by itself and stays green with the API and database down. For the same reason, probing a path that doesn't exist through the domain returns `200` and `index.html` (the frontend's history fallback) — check the body, not just the status.
 :::
 
-## Can I build the images myself?
+## Building your own images
 
 Yes, when the server can't reach GHCR — it needs the full repository on that machine:
 
@@ -108,4 +108,4 @@ Use either `pull` or a local build, not both: otherwise which image `up` runs de
 
 - [`deploy/README.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/deploy/README.md) — every command (in Chinese).
 - [`deploy/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/deploy/AGENTS.md) — the pitfalls behind these rules, and why automatic deployment was left out on purpose.
-- [Desktop and mobile clients](/en/features/clients/) — installers are built by a separate release workflow.
+- [Desktop and mobile](/en/features/clients/) — installers are built by a separate release workflow.

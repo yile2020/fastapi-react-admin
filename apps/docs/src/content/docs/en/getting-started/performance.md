@@ -1,5 +1,5 @@
 ---
-title: Performance and capacity
+title: Performance
 description: Measured — with the production image's default 2 workers, about 190 requests per second at a p95 of about 70 ms on read endpoints that run full auth, permission and audit checks, with zero failures at 64 concurrent requests. How that maps to users, how to scale, and how to measure it yourself.
 ---
 
@@ -7,7 +7,7 @@ The production image starts 2 API workers by default. On a mix of 12 everyday re
 
 These numbers come from a laptop, not a production server benchmark. Below are the test conditions, how to turn requests per second into a number of users, and how to rerun the test on your own hardware.
 
-## How fast is it?
+## Measured performance
 
 Every request takes the full path; nothing was switched off for the test: JWT verification, a session check in Redis, the RBAC permission-code check, row filtering by data scope, the database query, serialization, and an operation-log entry (GET requests are logged too).
 
@@ -20,7 +20,7 @@ Each configuration ran twice; the table shows the range. Across all 20 steps of 
 
 "Concurrent" means requests in flight at the same time, not users online. Once concurrency goes past what the workers can process, the extra requests wait in line: throughput stops rising and latency grows. Up to 64 concurrent requests nothing failed in the test; beyond that, requests start failing once queueing exceeds the client's or the connection pool's wait limit.
 
-## How many users is 190 requests per second?
+## Estimating user capacity
 
 There are two kinds of users:
 
@@ -33,9 +33,9 @@ So estimate capacity by the number of people working at the same time:
 
 For example — **these figures are assumptions, not measurements**: if one action sends 3–5 requests and a practiced user acts every 10–30 seconds, each person produces about 0.1–0.5 requests per second. At that rate the default 2 workers (about 190 req/s with a p95 around 70 ms) cover roughly **400–1,900 people working at once**.
 
-Your usage will differ, and so will the result. The reliable way is to test once before going live with realistic data, as described [below](#how-do-i-test-it-myself).
+Your usage will differ, and so will the result. The reliable way is to test once before going live with realistic data, as described [below](#running-your-own-benchmark).
 
-## How do I scale when it's not enough?
+## Scaling out
 
 **Add workers or replicas.** One worker that saturates a CPU core does about 110 req/s. Going from 1 to 2 workers measured about 116 → 190 req/s. This machine mixes performance and efficiency cores and runs under WSL2, so scaling beyond that couldn't be measured reliably; test it on a server with uniform cores.
 
@@ -58,7 +58,7 @@ The raw record is in [`scripts/AGENTS.md`](https://github.com/yile2020/fastapi-r
 
 </details>
 
-## How do I test it myself?
+## Running your own benchmark
 
 The repository ships a load-test script that only uses the backend's own dependencies:
 
@@ -73,14 +73,14 @@ pnpm loadtest --base-url http://127.0.0.1:8088/api/v1 --username <ordinary-user>
 - The sign-in endpoint is limited to 5 requests per minute, so the script signs in once and reuses the token. With the captcha on, add `--redis-container <redis container>` to read the answer from Redis.
 - Other programs on the same machine make results vary by ±10%. Run several rounds when comparing two versions.
 
-## What it doesn't promise
+## Limitations
 
 - **It isn't a production server benchmark.** Different hardware or a different database will give different numbers.
 - **Only read endpoints were tested.** Heavy operations such as export, import, AI chat and file upload weren't.
 - **The data is the seed data.** How fast list queries are on large tables depends on database configuration and indexes.
 - **No nginx or network in the path.** A real deployment adds reverse-proxy and network time.
 
-## Where is the code?
+## Source code
 
 - Load-test script: [`scripts/loadtest.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/scripts/loadtest.py); baseline service: [`scripts/loadtest_baseline.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/scripts/loadtest_baseline.py)
 - Test records and method: [`scripts/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/scripts/AGENTS.md)

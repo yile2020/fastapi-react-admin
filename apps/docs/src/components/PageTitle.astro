@@ -78,6 +78,10 @@ const assistants = [
 
   const top = document.querySelector<HTMLButtonElement>('[data-to-top]')
   if (top) {
+    // 挪到 <body> 下面：按钮写在正文里，而 Starlight 的 .main-pane 是 isolation: isolate 的独立层叠上下文，
+    // z-index 再高也只在正文里比；右侧目录栏是一整块 position: fixed、铺到屏幕右下角的面板，
+    // 会盖在按钮上把点击全接走（实测 elementFromPoint 命中的是 .right-sidebar，线上站一直是坏的）
+    document.body.append(top)
     const sync = () => { top.hidden = scrollY < 700 }
     addEventListener('scroll', sync, { passive: true })
     sync()
@@ -87,13 +91,13 @@ const assistants = [
 
 <style>
   @layer starlight.core {
-    h1 { margin-top: 1rem; font-size: var(--sl-text-h1); line-height: var(--sl-line-height-headings); font-weight: 600; color: var(--sl-color-white) }
+    h1 { margin-top: 1rem; font-size: var(--sl-text-h1); line-height: var(--sl-line-height-headings); font-weight: var(--fw-semibold); color: var(--sl-color-white) }
   }
   .page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 1rem }
   .page-copy {
     display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer;
     height: 2.25rem; padding: 0 0.7rem; border: 0; border-radius: 0.55rem;
-    font: inherit; font-size: 0.8125rem; font-weight: 500; color: var(--sl-color-gray-2);
+    font: inherit; font-size: var(--fs-sm); font-weight: var(--fw-regular); color: var(--sl-color-gray-2);
     background: transparent; box-shadow: inset 0 0 0 1px var(--line-strong);
     transition: color 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease;
   }

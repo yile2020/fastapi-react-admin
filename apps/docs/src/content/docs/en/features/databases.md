@@ -1,5 +1,5 @@
 ---
-title: "Databases: PostgreSQL, SQL Server, MySQL"
+title: Databases
 description: One FastAPI codebase and one Alembic migration chain for PostgreSQL (default), SQL Server and MySQL. Switch with DATABASE_TYPE; CI runs the full suite on two.
 sidebar:
   order: 8
@@ -7,7 +7,7 @@ sidebar:
 
 The backend runs on PostgreSQL, SQL Server or MySQL with the same models, the same Alembic migration chain and a seed file for each dialect. You choose one with `DATABASE_TYPE` in `apps/api/backend/.env`; PostgreSQL is the default. The backend is a fork of [fastapi-best-architecture](https://github.com/fastapi-practices/fastapi_best_architecture) (FBA), which supports PostgreSQL and MySQL. SQL Server support was added in this fork, upstream declined to merge it, and so the fork is permanent.
 
-## Which databases are supported, and how is each verified?
+## Supported databases
 
 | | Driver | Local setup | Verification |
 |---|---|---|---|
@@ -21,7 +21,7 @@ That MySQL run also covered the upgrade path. A database created by v0.0.1's `fb
 SQL Server 2022 is the only version this repo has tested. Versions before 2016 differ in T-SQL (`OFFSET … FETCH`, filtered unique indexes); validate those yourself before relying on them.
 :::
 
-## How do I switch to SQL Server?
+## Switching to SQL Server
 
 1. Start the container: `docker compose -f docker-compose.dev.yml --profile sqlserver up -d mssql`.
 2. Install [Microsoft ODBC Driver 18](https://learn.microsoft.com/sql/connect/odbc/download-odbc-driver-for-sql-server) **on the host**. The backend connects through `aioodbc`, and the driver inside the container doesn't count. Without it, the database starts and the backend fails on its first connection with `Can't open lib ... ODBC Driver 18`.
@@ -39,7 +39,7 @@ SQL Server 2022 is the only version this repo has tested. Versions before 2016 d
 
 `DATABASE_DRIVER` (default `ODBC Driver 18 for SQL Server`) must match a name listed by `odbcinst -q -d`. The production image (`apps/api/Dockerfile.prod`) installs `msodbcsql18`, so the same image serves all three databases. The worker and beat containers need it too: Celery's result backend connects via `mssql+pyodbc`.
 
-## How do I switch to MySQL?
+## Switching to MySQL
 
 Set `DATABASE_TYPE='mysql'` and `DATABASE_PORT=3306`, point the host and user at your MySQL 8.x server, and run `pnpm db:init`. It creates the database with `CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci` (`DATABASE_CHARSET`, default `utf8mb4`).
 
@@ -47,7 +47,7 @@ Set `DATABASE_TYPE='mysql'` and `DATABASE_PORT=3306`, point the host and user at
 Keep `DATABASE_PK_MODE='snowflake'`. All three seed files exist only in the snowflake-ID form. With `autoincrement`, `fba init` finds no seed file and skips it without an error, so you end up with tables but no `admin` account. Also note that `pnpm db:init` drops and recreates the database.
 :::
 
-## What did SQL Server support require?
+## SQL Server adaptations
 
 None of these problems show up on PostgreSQL, which is the local default. Only the `pytest · SQL Server` CI job catches them.
 
@@ -64,13 +64,13 @@ None of these problems show up on PostgreSQL, which is the local default. Only t
 
 The connection URL uses `mssql+aioodbc` with `LongAsMax=Yes` so `NVARCHAR(MAX)` / `VARBINARY(MAX)` values aren't truncated.
 
-## What do the other two dialects need?
+## PostgreSQL and MySQL
 
 - **PostgreSQL** aborts the whole transaction after one failed statement, so "try it, ignore if already applied" steps run inside a SAVEPOINT. On SQL Server, rolling back that SAVEPOINT fails, so the same step uses a plain `suppress`. `_tolerate_already_applied()` in the `c0000000comments` migration handles both. The PostgreSQL CI job runs `alembic upgrade c0000000comments` on an empty database to exercise that branch.
 - **MySQL** `DATETIME` defaults to whole seconds. Recycle-bin restore finds the attachment links of "the same delete" by an equal `deleted_time`. At one-second precision, links removed by hand in that same second were re-attached too (issue #132). `TimeZone` now maps to `DATETIME(6)` on MySQL, and migration `q0000000mysqldt` upgrades existing columns. `MODIFY` redefines a whole column and would silently drop `NOT NULL` and comments, so the migration reads both from `information_schema` and writes them back.
 - **Data migrations** never use dialect-specific upserts (`MERGE` / `ON CONFLICT` / `INSERT IGNORE`). They check for a row by business key (`sys_menu.name`, `sys_role.code`) before inserting. Seed IDs differ between dialects (PostgreSQL roles start at `4000000000000000…`, the other two at `3000000000000000…`).
 
-## How do migrations work?
+## Migrations
 
 ```bash
 pnpm db:revision 'add xxx column'   # after changing a model (--autogenerate); read the file before committing
@@ -81,7 +81,7 @@ pnpm db:history                      # the chain
 
 A new database comes from `pnpm db:init` (create tables from the models, load the seed, `alembic stamp head`), not from replaying migrations. The baseline revision `b0000000baseline` is intentionally empty and the models stay the single source of truth, so the chain can't be replayed from an empty database. That is by design. In production, a one-shot `migrate` container runs `alembic upgrade head` before the API and workers start. With `ENVIRONMENT=prod` the app refuses to start unless the database is at head. See [Deployment](/en/getting-started/deployment/).
 
-## Which settings are there?
+## Settings
 
 The database connection is configured in `.env` only; restart the backend and the worker after changing it (template: [`.env.example`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/.env.example)):
 
@@ -98,7 +98,7 @@ The database connection is configured in `.env` only; restart the backend and th
 | `DATABASE_SOURCES` | `{}` | Extra data sources, e.g. `{"read": "postgresql+asyncpg://…"}`; the name cannot be empty or `default` |
 | `DATABASE_ECHO` · `DATABASE_POOL_ECHO` | `false` | Log SQL / connection pool activity, for troubleshooting |
 
-## How it is tested
+## Tests
 
 Guards in [`app/task/tests/test_migrations.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/task/tests/test_migrations.py):
 
@@ -113,7 +113,7 @@ Guards in [`app/task/tests/test_migrations.py`](https://github.com/yile2020/fast
 
 In [`backend/tests/`](https://github.com/yile2020/fastapi-react-admin/tree/main/apps/api/backend/tests), `test_seed_dialects.py` checks that the three seed files have the same tables, row counts and columns, and that link tables point at IDs that exist. `test_timezone_type.py` compiles the time-column DDL for all three dialects without connecting to MySQL.
 
-## Where it lives in the code
+## Source code
 
 - [`apps/api/backend/database/db.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/database/db.py): connection URL per dialect
 - [`apps/api/backend/common/model.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/common/model.py): `UniversalStr`, `UniversalText`, `TimeZone`, `id_key`

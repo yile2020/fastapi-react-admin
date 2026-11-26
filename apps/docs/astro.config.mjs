@@ -85,7 +85,29 @@ export default defineConfig({
       logo: { src: './src/assets/logo.svg' },
       favicon: '/favicon.svg',
       // 主题和后台同一套：Inter / JetBrains Mono 自托管（不走 Google Fonts —— 国内打不开），品牌紫见 theme.css
-      customCss: ['@fontsource-variable/inter', '@fontsource-variable/jetbrains-mono', './src/styles/theme.css'],
+      // 字阶（typography.css）先于配色（theme.css）：后者用到前者的字重 token
+      customCss: ['@fontsource-variable/inter', '@fontsource-variable/jetbrains-mono', './src/styles/typography.css', './src/styles/theme.css'],
+      // 代码块：去掉终端那条带三个点的灰标题栏（frame: 'code' 且没写标题时不出标题栏），
+      // 边框和底色跟表格同一套中性灰，字号走字阶的 13px（typography.css 的 --fs-xs）
+      expressiveCode: {
+        defaultProps: { frame: 'code' },
+        styleOverrides: {
+          borderRadius: '0.6rem',
+          borderColor: 'var(--sl-color-gray-5)',
+          codeBackground: 'var(--sl-color-gray-7)',
+          codeFontSize: 'var(--fs-xs)',
+          codeLineHeight: '1.7',
+          uiFontSize: 'var(--fs-2xs)',
+          frames: {
+            frameBoxShadowCssValue: 'none',
+            editorBackground: 'var(--sl-color-gray-7)',
+            editorTabBarBackground: 'var(--sl-color-gray-7)',
+            editorActiveTabBackground: 'var(--sl-color-gray-7)',
+            terminalBackground: 'var(--sl-color-gray-7)',
+            terminalTitlebarBackground: 'var(--sl-color-gray-7)',
+          },
+        },
+      },
       // 首页 hero 换成登录页那套品牌面板 + 立体榫卯（src/components/Hero.astro）
       // 顶栏的主题切换是一个图标按钮 + 「浅色 / 深色 / 跟随系统」菜单（src/components/ThemeSelect.astro）
       components: {
@@ -96,6 +118,8 @@ export default defineConfig({
         // 语言切换不用原生 <select>；内页标题下加「复制 Markdown / 打开方式」
         LanguageSelect: './src/components/LangSelect.astro',
         PageTitle: './src/components/PageTitle.astro',
+        // 右侧「本页内容」：阶梯轨道线 + 屏幕里露着的那几节一起高亮
+        TableOfContents: './src/components/DocsToc.astro',
       },
       social: [{ icon: 'github', label: 'GitHub', href: REPO }],
       editLink: { baseUrl: `${REPO}/edit/main/apps/docs/` },

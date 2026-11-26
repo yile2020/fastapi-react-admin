@@ -1,11 +1,11 @@
 ---
-title: 技术架构与项目结构
+title: 项目结构
 description: 前后端怎么分层、一次请求经过哪些文件：以用户列表为例，从前端路由文件一路跟到数据库：每一环在哪个文件、负责什么；以及想改表单、列表、接口字段、权限码、表结构时该去哪个目录找。
 ---
 
 import DiagramRequestFlow from '../../../components/DiagramRequestFlow.astro'
 
-第一次打开这个仓库，最快的读法是跟着一次请求走一遍。这一页以**用户列表**（后台的「系统管理 → 用户管理」，接口是 `GET /api/v1/sys/users`）为例，列出它依次经过的文件，再给一张「想改什么去哪找」的表。要从头写一个新模块，看[从零加一个业务模块](/guides/first-module/)。
+第一次打开这个仓库，最快的读法是跟着一次请求走一遍。这一页以**用户列表**（后台的「系统管理 → 用户管理」，接口是 `GET /api/v1/sys/users`）为例，列出它依次经过的文件，再给一张「想改什么去哪找」的表。要从头写一个新模块，看[新增业务模块](/guides/first-module/)。
 
 <DiagramRequestFlow
   bands={[
@@ -27,7 +27,7 @@ import DiagramRequestFlow from '../../../components/DiagramRequestFlow.astro'
   caption="箭头是请求方向。高亮的那一环：行级数据范围由 crud 的基类自动加进查询，不用在每个方法里手写"
 />
 
-## 仓库里有哪些目录？
+## 目录结构
 
 一个 pnpm + turbo 的 monorepo，后端、三个客户端和文档站都在里面。
 
@@ -57,7 +57,7 @@ packages/
 
 方向反了（比如 `ui` 去 import `platform`）`pnpm arch:check` 会报错，CI 里也跑这一条。
 
-## 一次请求依次经过哪些文件？
+## 一次请求的链路
 
 十个环节，前四个在浏览器里，后六个在服务端。
 
@@ -80,7 +80,7 @@ packages/
 - **数据范围不用手写。** 第 9 环是基类自动做的。确实要绕开时（比如后台任务要查全量）用 `bypass_data_scope()`。规则怎么配见[数据权限](/features/data-permissions/)。
 - **成败判定不在页面里。** HTTP 200 不代表成功，要看信封里的 `code`；这个判断集中在 `packages/api`，页面只处理成功的数据和抛出来的 `ApiError`。
 
-## 后端一个模块里有什么？
+## 后端模块
 
 内置功能在 [`apps/api/backend/app/admin/`](https://github.com/yile2020/fastapi-react-admin/tree/main/apps/api/backend/app/admin)，按层分目录，调用方向是 `api → service → crud`：
 
@@ -96,7 +96,7 @@ apps/api/backend/app/admin/
 
 可拆卸的功能做成插件，放在 [`apps/api/backend/plugin/`](https://github.com/yile2020/fastapi-react-admin/tree/main/apps/api/backend/plugin) 下：同样的五层，外加一个 `plugin.toml` 和自己的 `sql/` 种子。详见[插件机制](/features/plugins/)。
 
-## 前端一个页面里有什么？
+## 前端页面
 
 页面在 [`packages/platform/src/pages/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages) 下，一个页面一个目录。用户管理是这几个文件：
 
@@ -108,7 +108,7 @@ apps/api/backend/app/admin/
 | `index.tsx` | 页面本身：查询区、表格、分页，把筛选条件写进 URL |
 | `table-features.ts` | 这张表启用了哪些表格功能 |
 
-## 想改某样东西，去哪找？
+## 改动速查
 
 | 要改什么 | 去哪找 |
 |---|---|
@@ -122,11 +122,11 @@ apps/api/backend/app/admin/
 | 菜单和按钮权限码 | 种子在 `apps/api/backend/sql/` 下三种数据库各一份的 `init_snowflake_test_data.sql`；种子只在初始化时执行，已经在跑的库要再写一条数据迁移。后端用 `RequestPermission('…')` 声明，前端用 `requirePerm(…)` 守卫 |
 | 界面文案和翻译 | [`packages/i18n/src/locales/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/i18n/src/locales) 的 `zh-CN.json` 和 `en-US.json`，改完跑 `pnpm i18n:check`。后端的报错文案另在 `apps/api/backend/locale/` |
 | 环境变量 | [`apps/api/backend/.env.example`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/.env.example) 和 [`core/conf.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/core/conf.py) |
-| 能在界面上改的参数 | 参数配置插件 `apps/api/backend/plugin/config/`，见[参数配置与数据字典](/features/config-dict/) |
+| 能在界面上改的参数 | 参数配置插件 `apps/api/backend/plugin/config/`，见[参数与字典](/features/config-dict/) |
 | 定时任务 | [`apps/api/backend/app/task/`](https://github.com/yile2020/fastapi-react-admin/tree/main/apps/api/backend/app/task)，见[定时任务](/features/scheduler/) |
-| 加一个侧边栏里看得见的页面 | 路由文件、页面注册表、页面目录、`sys_menu` 的菜单记录、语言包，五处都要有。逐步做法见[从零加一个业务模块](/guides/first-module/) |
+| 加一个侧边栏里看得见的页面 | 路由文件、页面注册表、页面目录、`sys_menu` 的菜单记录、语言包，五处都要有。逐步做法见[新增业务模块](/guides/first-module/) |
 
-## 让 AI 读这个仓库，从哪开始？
+## AI 阅读入口
 
 给编码代理的约定写在仓库里，不在这个文档站上：根目录的 [`CLAUDE.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/CLAUDE.md) 放跨模块的硬纪律，各模块目录下的 `AGENTS.md` 放那一层实测出来的坑。Claude Code 读到某个目录的文件时会自动加载那一份。
 

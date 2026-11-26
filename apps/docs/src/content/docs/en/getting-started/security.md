@@ -7,7 +7,7 @@ This page lists the protections that are on by default, each linked to its detai
 
 Everything here comes from the code and its automated tests. **It is not a third-party penetration test report.**
 
-## What does sign-in protect against?
+## Sign-in protection
 
 - **Image captcha** on by default and driven by its setting: switch it under System config at any time; production doesn't force it on.
 - **Lockout**: 5 failures on one account within 5 minutes lock it for 5 minutes; 30 failures from one IP across accounts within 15 minutes block that IP for the rest of those 15 minutes.
@@ -18,7 +18,7 @@ Everything here comes from the code and its automated tests. **It is not a third
 
 See [Sign-in and security](/en/features/login-security/) and [Security configuration](/en/reference/security-config/).
 
-## How are sessions controlled after sign-in?
+## Session management
 
 - **Every sign-in has a server-side session**, with an idle timeout, a maximum lifetime and a device limit per client type. The web client, for example, signs out after 120 idle minutes by default and lasts at most 7 days.
 - **Idle means the person isn't doing anything**: background polling doesn't count as activity, so a session still expires when someone walks away.
@@ -27,16 +27,16 @@ See [Sign-in and security](/en/features/login-security/) and [Security configura
 
 See [Session management](/en/features/login-sessions/).
 
-## Where are "can do" and "can see" decided?
+## Permissions and data scope
 
 - **Endpoints that need a permission check it in the backend.** Hiding a button in the frontend is only cosmetic; the real boundary is in the backend. Write operations on those endpoints also require back-office access. Disabling a directory disables the permissions of every button under it. Endpoints that only require sign-in, such as "current user", don't check a permission code.
 - **Data scopes filter rows in the query layer**: on the same user table, a department manager only gets the people in their own department. Endpoints don't have to add the filter by hand.
 - **Files you aren't allowed to read return 404**, not 403, so the response doesn't confirm that the ID exists.
 - **Permission codes are cross-checked automatically**: every code a frontend button uses must be guarded by a backend endpoint, and every code the backend or frontend uses must exist in the menu data. If one is missing, a [test](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/tests/security/test_permission_codes.py) fails.
 
-See [Users, roles, departments and menus](/en/features/rbac/) and [Data permissions](/en/features/data-permissions/).
+See [Users and roles](/en/features/rbac/) and [Data permissions](/en/features/data-permissions/).
 
-## If something happens, can we find out what?
+## Audit trail
 
 - **Sign-in log**: successful and failed sign-ins (except requests turned away by the rate limiter), plus account lockouts, IP lockouts and forced sign-outs, with IP, location, browser and device.
 - **Operation log**: every request under `/api/v1`, GET included. Passwords, tokens and keys are **redacted before truncation**, nested fields included. Request and response bodies declared as JSON that can't be parsed are left out rather than stored as-is; plain text has no fields to redact and is stored truncated.
@@ -45,7 +45,7 @@ See [Users, roles, departments and menus](/en/features/rbac/) and [Data permissi
 
 See [Logs and audit](/en/features/audit-logs/).
 
-## How are secrets and credentials stored?
+## Secrets and credentials
 
 - **Secrets saved in the UI are encrypted at rest**: AI model API keys, object storage keys, group-bot webhook URLs, the SMTP authorization code in system config and so on, each with its own encryption key. Without that key, saving is **refused**; it never falls back to plain text.
 - **Read APIs don't return plain text**: config secrets only say whether they're set, and model keys are masked.
@@ -53,7 +53,7 @@ See [Logs and audit](/en/features/audit-logs/).
 
 What you need to do: set the encryption keys, and `DATA_CHANGE_CHAIN_KEY` for the audit signatures, before going live; see the [go-live checklist](/en/getting-started/deployment/#checklist-before-going-live).
 
-## What safety nets are there in production?
+## Production safety nets
 
 With `ENVIRONMENT='prod'`, the backend checks all of the following before starting and [refuses to start](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/core/conf.py) if any fails:
 
@@ -69,9 +69,9 @@ Also:
 - **Forwarding headers (`X-Forwarded-For` and the like) are only trusted from known proxies**: the app's `TRUSTED_PROXIES` is empty by default, trusting no one, and uvicorn in the production image only trusts the container network. Otherwise a client could get past rate limits and fake the IP in the logs just by changing a header.
 - HTTPS sites mark the sign-in cookie `Secure` (`COOKIE_SECURE`).
 
-See [Deploying to a server](/en/getting-started/deployment/).
+See [Deployment](/en/getting-started/deployment/).
 
-## How is the open API protected?
+## Open API protection
 
 - External systems call it with **AK/SK signatures**, compared in constant time.
 - **Replay protection**: a 5-minute timestamp window plus a nonce that can't repeat within 10 minutes.
@@ -80,14 +80,14 @@ See [Deploying to a server](/en/getting-started/deployment/).
 
 See [Open API](/en/features/open-api/).
 
-## What about uploaded files?
+## Uploaded files
 
 - Paths in upload file names are [stripped](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/utils/file_ops.py), so nothing like `../../` gets through; [tests](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/tests/api_v1/test_file.py) guard it.
 - Private files aren't served as static files and can only be downloaded with sign-in credentials. Public files must be declared explicitly, and only images are accepted.
 
 See [Files and storage](/en/features/file-storage/).
 
-## What it doesn't do
+## Limitations
 
 - The only second factors are TOTP and recovery codes; no passkeys (WebAuthn) or hardware keys.
 - No self-service password reset; ask an admin.
@@ -95,6 +95,6 @@ See [Files and storage](/en/features/file-storage/).
 - Someone who has both the database **and** the signing key can get past the data-change signature chain.
 - This page is not a third-party security audit or certification.
 
-## How do I report a vulnerability?
+## Reporting vulnerabilities
 
 Please don't open a public issue. Use GitHub's private vulnerability reporting (repo → Security → Report a vulnerability). Scope and process are in [`SECURITY.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/SECURITY.md).

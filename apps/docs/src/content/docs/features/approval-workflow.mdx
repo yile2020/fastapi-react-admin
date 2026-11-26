@@ -12,7 +12,7 @@ fastapi-react-admin 自带一个审批流插件（`plugin/workflow`）：管理�
 
 <ProductShot src={shot} alt="流程定义：表单设计器与流程树" url="localhost:8888/workflow/definition" />
 
-## 在界面上哪里找？
+## 界面入口
 
 | 入口 | 路径 | 谁能用 | 做什么 |
 |---|---|---|---|
@@ -25,7 +25,7 @@ fastapi-react-admin 自带一个审批流插件（`plugin/workflow`）：管理�
 
 审批中心的守卫只要求登录，不要求权限码：审批人通常不在单据的数据范围里，用菜单权限或数据范围去卡，会让该审批的人打不开自己的待办。每一张单能不能看、能做什么，由服务端的 `capabilities()` 逐张判。
 
-## 一个流程定义里能放什么？
+## 流程定义
 
 流程定义就是两份 JSON：表单 schema 和流程模型。发布时用 [`engine/schema.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/workflow/engine/schema.py) 里的 Pydantic 形状校验一遍，存的是原始 JSON。
 
@@ -47,7 +47,7 @@ fastapi-react-admin 自带一个审批流插件（`plugin/workflow`）：管理�
 
 设计器改的永远是草稿（保存草稿不校验）；**发布**时才校验，通过后把草稿原样拷成一个新版本。在途的单子拿的是发起那一刻的快照，改定义、停用定义都不影响它们。已经有审批单的流程不能删，只能停用。
 
-## 每一步由谁审批？
+## 审批人
 
 审批节点上配审批人规则（[`engine/assignee.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/workflow/engine/assignee.py)）：
 
@@ -62,11 +62,11 @@ fastapi-react-admin 自带一个审批流插件（`plugin/workflow`）：管理�
 
 除了 `initiator` 规则，结果里**永远去掉发起人**，不会出现自己审自己。规则取不到人时由节点的 `onEmpty` 决定：`reject`（默认，原因写进轨迹）、`skip` 跳过、`admin` 转给超级管理员（同样去掉发起人）。不存在静默放行。
 
-## 或签、会签、依次审批有什么区别？
+## 审批方式
 
 `mode: any`（或签）一人同意即通过，其余人的待办作废；`mode: all`（会签）要全部同意，任何一人驳回整单结束；`mode: seq`（依次审批）一个一个来，顺序在单子进入这个节点时就定死，之后角色成员变了也不影响在途的单。
 
-## 除了同意和驳回，审批人还能做什么？
+## 审批动作
 
 | 动作 | 行为 |
 |---|---|
@@ -78,7 +78,7 @@ fastapi-react-admin 自带一个审批流插件（`plugin/workflow`）：管理�
 
 发起人可以**撤回**在途的单，也可以**催办**当前审批人，但 5 分钟内只能催一次。有 `workflow:instance:terminate` 的人能终止，有 `workflow:instance:reassign` 的人能改办理人。节点上的 `actions` 用来收窄可选动作：`null` 继承默认的转交 / 抄送 / 退回 / 加签，`[]` 只留同意和驳回。
 
-## 审批人超时了会怎样？
+## 超时处理
 
 审批节点可配 `timeout: {hours, action}`，`hours` 取 1 ～ 720，`action` 是 `remind`（提醒）、`approve`（自动同意）或 `reject`（自动驳回整单）。从**待办到这个人手上**开始计时，所以转交出来的待办、依次审批轮到的下一个人都重新计时。按自然时间算，不计工作日。
 
@@ -94,15 +94,15 @@ Celery beat 没起，或者 **任务调度 → 任务管理** 里那条 `workflo
 - **加急**只是提示：加急的单在审批人的待办里排前面，不改流程。
 - **已读**：当前审批人第一次打开详情时记一笔，发起人能看到「已读」。
 
-## 有人离职，手上的待办怎么交接？
+## 离职交接
 
 **实例监控 → 离职交接** 把一个人手上所有在办的待办交给另一个人。「从谁那交接」的列表直接列出手上有待办的人，**包括已停用、已删除的账号** —— 普通的选人控件只列在职的人，恰恰选不到最需要交接的那一个。每条待办一个事务，交不过去的逐条给原因；同一个幂等键重复点一次，不会交两遍。
 
-## 字段权限怎么控制谁看得见什么？
+## 字段权限
 
 每个节点给每个字段设 `hidden` / `readonly` / `editable`（开始节点默认可填，审批节点默认只读），**只在服务端算数**：详情接口按查看人从 schema、数据、轨迹里的改动前后值三处删掉 hidden 字段。待办摘要、条件分支记录（「走了大额分支」就等于说出了金额区间）、流程预告也不会漏出隐藏字段；条件引用了隐藏字段时，发布校验会给一条 `CONDITION_VAR_HIDDEN` 警告。
 
-## 两个人同时点按钮会出问题吗？
+## 并发控制
 
 所有改状态的动作都先执行 `UPDATE wf_instance SET version = version + 1 WHERE id = ? AND version = ? AND status = 'running'` 认领实例，失败就整个事务重来，最多 3 次。每个动作带幂等键，只对同一个人重放结果。被拒绝的动作也会落一条记录（在另一个事务里写）。
 
@@ -112,14 +112,14 @@ Celery beat 没起，或者 **任务调度 → 任务管理** 里那条 `workflo
 
 插件还有几项可选的 AI 能力：AI 预审、一句话生成流程、发起时从材料里填单、在对话里审批，以及只在或签节点上、按历史数据放闸的 AI 自动同意，见 [AI 助手](/features/ai-assistant/)。
 
-## 目前不支持的
+## 已知限制
 
 - 没有并行分支：流程是一棵树，一张单任何时刻只停在一个节点上。
 - 设计器的条件编辑器只编辑一层「全部满足」；手写的 `any` 嵌套条件会保留，但界面里改不了。
 - 表单字段用上 / 下按钮排序，不能拖拽。
 - 超时按自然小时算，没有工作日历。
 
-## 有哪些开关？
+## 配置项
 
 审批的行为大多是**按流程、按节点**配的（设计器里的审批方式、超时提醒与自动处理、字段权限、AI 节点），不是全局开关。全局的只有一个，在 `.env` 里改，改完重启后端：
 
@@ -127,14 +127,14 @@ Celery beat 没起，或者 **任务调度 → 任务管理** 里那条 `workflo
 |---|---|---|
 | `WORKFLOW_AI_APPROVE_ENABLED` | `true` | AI 自动同意的总闸。`false` = 所有流程的 AI 自动同意都停，AI 预审照常给建议。开着也只是「允许」：节点自己要开，而且这个流程 × 模型的数据够了才会真的替人同意 |
 
-## 代码在哪
+## 代码位置
 
 - [`apps/api/backend/plugin/workflow/engine/`](https://github.com/yile2020/fastapi-react-admin/tree/main/apps/api/backend/plugin/workflow/engine) —— 形状、树导航与发布校验（`flow.py`）、表单联动与字段权限（`form.py`）、审批人规则、流程试算（`simulate.py`）
 - [`service/runtime_service.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/workflow/service/runtime_service.py) —— 所有动作、认领、能力信封；[`service/query_service.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/workflow/service/query_service.py) —— 审批中心查询与按人裁字段的详情；[`service/timeout_service.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/workflow/service/timeout_service.py)
 - 前端：[`packages/platform/src/pages/workflow/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/workflow)（表单渲染器、流程图、详情抽屉），以及 `workflow-definition/`、`workflow-inbox/`、`workflow-monitor/`
 - 设计取舍与踩过的坑：[`plugin/workflow/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/workflow/AGENTS.md)、[`pages/workflow/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/workflow/AGENTS.md)
 
-## 怎么测的
+## 测试
 
 [`plugin/workflow/tests/`](https://github.com/yile2020/fastapi-react-admin/tree/main/apps/api/backend/plugin/workflow/tests) 收集到 167 条 pytest 用例，大部分跑在真实的测试库和 Redis 上（引擎与动作 88 条，AI 相关 79 条，其中 14 条调真模型、没配凭据时跳过）。举几个例子：
 
@@ -144,6 +144,6 @@ Celery beat 没起，或者 **任务调度 → 任务管理** 里那条 `workflo
 
 哪些测试做过变异验证（把修复改回去、测试变红）在分册里逐条记着。浏览器端 [`workflow.spec.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/tests/workflow.spec.ts) 有 14 条 Playwright 用例，覆盖发起 → 同意、退回后重新提交、改办理人、拿回、加签、草稿、加急、已读。CI 在 PostgreSQL 和 SQL Server 上跑后端全套；MySQL 没有 CI job。
 
-## 在演示站里试试
+## 在线体验
 
 打开 [fra.wubunan.com](https://fra.wubunan.com/sign-in)，用 `admin` / `123456` 登录。**审批 → 流程定义** 里能打开设计器（基础信息 → 表单设计 → 流程设计），种子里有示例流程「请假」；**审批 → 审批中心** 发起和处理申请；**审批 → 实例监控** 里有终止、改办理人和离职交接。

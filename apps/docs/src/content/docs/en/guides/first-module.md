@@ -1,5 +1,5 @@
 ---
-title: Add a business module from scratch
+title: Add a module
 description: Build a real Customers module end to end, from model and migration through the three backend layers, menus and permissions, to a list page with data scopes.
 sidebar:
   order: 1
@@ -18,7 +18,7 @@ All the code below was actually run on a clean checkout: the migration was gener
 
 Before you start, get the services running (see [Quick start](/en/getting-started/quick-start/)) and read hard rules 1–6 in the root `CLAUDE.md`.
 
-## What does the module look like?
+## Module layout
 
 | Field | Type | Notes |
 |---|---|---|
@@ -44,7 +44,7 @@ apps/api/backend/app/crm/
 └─ tests/      __init__.py · test_customer.py
 ```
 
-## Step 1: write the model
+## 1. Write the model
 
 `apps/api/backend/app/crm/model/customer.py`:
 
@@ -89,7 +89,7 @@ Notes:
 
 **Check**: the model does not create its table by itself. If the migration in the next step sees `crm_customer`, the model was loaded.
 
-## Step 2: generate the migration
+## 2. Generate the migration
 
 After changing the model, generate a migration:
 
@@ -127,7 +127,7 @@ pnpm db:current
 Every model change needs a migration. `--reload` only re-imports the code; it does not change tables that already exist. The test `test_model_matches_migrations` compares the models with the database and fails if a migration is missing.
 :::
 
-## Step 3: write the schemas
+## 3. Write the schemas
 
 `apps/api/backend/app/crm/schema/customer.py`:
 
@@ -194,7 +194,7 @@ Declaring `id` as `int` is fine. On the way out, `stringify_unsafe_ints` turns a
 
 **Check**: once the endpoints exist, submitting a 70-character `name` returns 422 with "name 最长 64 个字符，收到 70 个" (max 64 characters, got 70).
 
-## Step 4: write the crud layer (DAO)
+## 4. Write the crud layer
 
 `apps/api/backend/app/crm/crud/crud_customer.py`:
 
@@ -268,7 +268,7 @@ Rules:
 - **Paginated queries need an order** (`select_order`). SQL Server's `OFFSET … FETCH` requires `ORDER BY`
 - **The `Select` you hand to pagination must not join many-to-many tables**, or `total` counts rows after the join and pages shift. This table has no many-to-many relation, so it does not apply here
 
-## Step 5: write the service
+## 5. Write the service
 
 `apps/api/backend/app/crm/service/customer_service.py`:
 
@@ -346,7 +346,7 @@ Error messages go through `t('error.<module>.<key>')`, not Chinese string litera
 
 `backend/tests/test_i18n.py` checks that both locale files have the same keys and that every key referenced in code exists.
 
-## Step 6: write the API and register the router
+## 6. Add the API router
 
 `apps/api/backend/app/crm/api/v1/customer.py`:
 
@@ -482,7 +482,7 @@ curl -s -X POST http://127.0.0.1:8088/api/v1/crm/customers \
 
 List again and the record is there. `id`, `dept_id` and `owner_id` all come back as strings, for example `"id":"2228321080542494720"`.
 
-## Step 7: add the menu and button permission codes
+## 7. Add menus and permissions
 
 The backend uses 4 permission codes, and the menu table needs a button row for each one. A non-superuser's permission codes come only from the menus attached to their roles. If a code is on no menu, that user always gets 403.
 
@@ -491,7 +491,7 @@ There are two ways to add them:
 - **To try it in your own environment**: create them by hand in System → Menus. First a directory "客户关系" (CRM, path `/crm`), then a menu "客户管理" (Customers, path `/crm/customer`) under it, then 4 buttons under the menu with the codes `crm:customer:list` / `:add` / `:edit` / `:del`. Menus created this way exist only in that one database
 - **To ship them with the code**: do what follows, adding them to both the seed SQL and a data migration
 
-### Why add them in both places?
+### Seed SQL and migration
 
 | How the database was created | Where its menus come from |
 |---|---|
@@ -577,7 +577,7 @@ cd apps/api && pnpm seed:manifest --write
 - After `downgrade -1` those 6 rows and the `crm_customer` table are gone; after `upgrade` they are back
 - `app/admin/tests/security/test_permission_codes.py` passes. It checks that the permission codes in backend `RequestPermission`, frontend `<Can perm>` and the seed menus agree
 
-## Step 8: write the frontend list page
+## 8. Write the list page
 
 A page has three parts, and all three are required:
 
@@ -1317,7 +1317,7 @@ Once all of these pass, sign in as the superuser: the sidebar shows 客户关系
 All the commands above were actually run and passed. What it looks like in the browser (sidebar, form interaction) was not confirmed with screenshots during verification, so click through it yourself the first time.
 :::
 
-### Optional: let operators maintain the `level` options
+### Optional: dictionary options
 
 Options that operators change or extend, like `level` (normal / important / VIP), fit the [data dictionary](/en/features/config-dict/) better than values hard-coded in the page: create a type `crm_level` under "System → Data dictionary", add three items (values `0` / `1` / `2`), and the page only names the type code:
 
@@ -1334,7 +1334,7 @@ import { DictSelect, DictTag } from "../_shared/dict"
 - To **ship the items with the code**, do what step 7 does for menus: add them to both the seed SQL and a data migration (`utils/data_migration.py` only has the generic `insert_if_absent`, no dictionary-specific helper); to try it in your own environment, just create them in the UI
 - This subsection has not been run against this page's "customer" example: there `level` is still three values hard-coded in the page. The tests and browser checks of the dictionary-reading layer itself are in [`pages/_shared/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/_shared/AGENTS.md)
 
-## Step 9: make data scopes take effect
+## 9. Apply data scopes
 
 Data scopes need no code: they were wired in when the DAO inherited `DataScopedCRUD` in step 4. This step configures them in the UI and confirms they actually work. For how they work, see [Data permissions](/en/features/data-permissions/).
 
@@ -1363,7 +1363,7 @@ These two points are inferred from the code of `filter_data_permission_for_user`
 When an `__ALL__` rule meets a table without the matching column, that rule is skipped. If every rule of a role is skipped, the result is **allow everything**. So if customers should be filtered by department, the table must have a `dept_id` column and new rows must fill it in.
 :::
 
-## Step 10: write tests
+## 10. Write tests
 
 First add the new app's tests to `testpaths` in `apps/api/pyproject.toml`. Otherwise `pnpm test` does not collect them, and nothing tells you:
 
@@ -1507,7 +1507,7 @@ cd apps/api && uv run --no-sync pytest \
 | You wrote tests and `pnpm test` is green, but they never ran | The new app's `tests/` directory is not in `testpaths` in `pyproject.toml` |
 | After splitting the module into a new workspace package, the production image build fails with `Cannot find module` | Only an alias / tsconfig path was added; the package was not declared in the dependent's `package.json`. `pnpm arch:check` checks this |
 
-## Related source
+## Source code
 
 - [`backend/common/security/data_scope.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/common/security/data_scope.py): `DataScopedCRUD` and which read methods it overrides
 - [`backend/common/security/permission.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/common/security/permission.py): how rules compile into a `WHERE` condition

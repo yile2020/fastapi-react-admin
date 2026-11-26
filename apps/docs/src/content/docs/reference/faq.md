@@ -9,7 +9,9 @@ sidebar:
 
 ## 安装与本地启动
 
-### `Port 8888 is already in use`
+### 端口 8888 被占用
+
+**现象**：`Port 8888 is already in use`
 
 **原因**：前端端口固定在 8888，`apps/web/vite.config.ts` 里写了 `strictPort: true`。端口被占时 Vite 直接退出，不会自己换到 8889，因为后端的 CORS 白名单、OAuth2 回跳地址和桌面端开发脚本都写死了 8888。
 
@@ -21,7 +23,9 @@ lsof -i :8888     # 看是谁占着
 
 出处：[`CLAUDE.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/CLAUDE.md)「本地起服务」一节
 
-### `Can't open lib 'ODBC Driver 18 for SQL Server'`
+### 找不到 ODBC 驱动
+
+**现象**：`Can't open lib 'ODBC Driver 18 for SQL Server'`
 
 **原因**：切到 SQL Server 后，后端通过 `aioodbc` 连库，用的是**宿主机**上的 ODBC 驱动。SQL Server 容器里自带的那份驱动不算数，所以容器起来了，后端一连库就报这一句。
 
@@ -33,7 +37,9 @@ odbcinst -q -d
 
 出处：[`CONTRIBUTING.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/CONTRIBUTING.md)「换数据库 / 接对象存储」、[`apps/api/Dockerfile.prod`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/Dockerfile.prod)
 
-### `Login failed for user 'sa'`（SQL Server 错误 18456）
+### SQL Server 登录失败
+
+**现象**：`Login failed for user 'sa'`（SQL Server 错误 18456）
 
 **原因**：`.env` 里的 `DATABASE_PASSWORD` 和 SQL Server 实例的实际密码对不上。最常见的情况是改了 `docker-compose.dev.yml` 里的 `MSSQL_SA_PASSWORD`：SQL Server 用了持久化卷，已经初始化过的实例不会跟着改密码。
 
@@ -41,7 +47,9 @@ odbcinst -q -d
 
 出处：[`apps/api/backend/cli.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/cli.py)（`_format_database_connection_error`）
 
-### 拉了新代码后 `pnpm test` / `pnpm db:upgrade` 报 `ModuleNotFoundError`，但 `pnpm dev` 跑得起来
+### 测试报模块找不到
+
+**现象**：拉了新代码后 `pnpm test` / `pnpm db:upgrade` 报 `ModuleNotFoundError`，但 `pnpm dev` 跑得起来
 
 **原因**：Python 依赖归 `uv` 管，`pnpm install` 不会装它们。`dev`、`db:init`、`db:reset` 用的是裸 `uv run`，会自动同步依赖；`test`、`test:db`、`db:upgrade`、`e2e:server`、`celery:*` 带了 `--no-sync`，缺包就直接报错。所以 `pnpm dev` 能跑，不代表依赖已经装齐。
 
@@ -53,7 +61,9 @@ pnpm --filter api exec uv sync     # 或者 pnpm install:all
 
 出处：[`apps/api/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/AGENTS.md)「`pnpm install` 补不了后端依赖」
 
-### worker 日志里出现 `Received unregistered task of type '…'`，自己的任务时有时无
+### worker 收到未注册任务
+
+**现象**：worker 日志里出现 `Received unregistered task of type '…'`，自己的任务时有时无
 
 **原因**：Celery broker 默认用 Redis 的 1 号库（`CELERY_BROKER_REDIS_DATABASE=1`）。本机另一个项目的 Celery 也用同一个 Redis 的 1 号库时，两边的 worker 消费的是同一个队列：对方的任务被这边收走，报「未注册」；这边的任务被对方收走，悄无声息地丢了。
 
@@ -67,7 +77,9 @@ docker exec fba_redis redis-cli -n 7 DBSIZE    # 返回 0 才是空库
 
 ## 登录与会话
 
-### 用 `http://localhost:8888` 能登录，一刷新页面就回到登录页
+### 刷新后回到登录页
+
+**现象**：用 `http://localhost:8888` 能登录，一刷新页面就回到登录页
 
 **原因**：前端默认直接请求 `http://127.0.0.1:8088`（`packages/platform/src/api-client/client.ts` 的 `API_BASE`）。从 `localhost` 打开页面时，那是一次跨站请求，浏览器不会保存刷新令牌的 cookie。登录本身能成功，但整页刷新后 `/auth/refresh` 返回 401，就被送回了登录页。
 
@@ -75,7 +87,9 @@ docker exec fba_redis redis-cli -n 7 DBSIZE    # 返回 0 才是空库
 
 出处：[`apps/docs/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/docs/AGENTS.md)「截图怎么重拍」
 
-### `pnpm db:init` 之后用 `admin` / `123456` 登录不上
+### 初始化后 admin 登录失败
+
+**现象**：`pnpm db:init` 之后用 `admin` / `123456` 登录不上
 
 **原因**：`fba init` 灌完种子后，会强制把 admin 的默认密码 `123456` 换掉：在终端里运行会提示你输入新密码；非交互环境（`--auto`、CI、没有 TTY）读环境变量 `FBA_INIT_ADMIN_PASSWORD`，两者都没有就直接失败。种子里的示例账号 `test` 也会被停用，并换成随机密码。
 
@@ -89,7 +103,9 @@ FBA_INIT_ADMIN_PASSWORD='<强口令>' pnpm db:reset
 
 出处：[`apps/api/backend/cli.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/cli.py)（`_set_admin_password`）
 
-### 登录提示 `请求过于频繁，请稍后重试`（HTTP 429）
+### 登录被限流（429）
+
+**现象**：登录提示 `请求过于频繁，请稍后重试`（HTTP 429）
 
 **原因**：登录相关接口按「IP + 路径」限流，每分钟 5 次；验证码接口 `/auth/captcha` 是每 30 秒 5 次。连续输错、或者写脚本连续登录多个账号，很快就会撞上。响应头里的 `Retry-After` 是要等待的秒数。
 
@@ -97,7 +113,9 @@ FBA_INIT_ADMIN_PASSWORD='<强口令>' pnpm db:reset
 
 出处：[`apps/docs/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/docs/AGENTS.md)「截图怎么重拍」、[`apps/api/backend/app/admin/api/v1/auth/auth.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/api/v1/auth/auth.py)
 
-### `.env` 里设了 `LOGIN_CAPTCHA_ENABLED=false`，登录页还是要验证码
+### 关了验证码仍要输入
+
+**现象**：`.env` 里设了 `LOGIN_CAPTCHA_ENABLED=false`，登录页还是要验证码
 
 **原因**：这个开关在运行时以数据库 `sys_config` 表里的值为准。种子数据里有一条 `LOGIN_CAPTCHA_ENABLED`，后端加载后会覆盖 `.env` 里的值。
 
@@ -111,7 +129,9 @@ docker exec fba_redis redis-cli --raw GET "fba:login:captcha:<uuid>"
 
 ## 数据库与迁移
 
-### `pnpm db:init` 之后原来的数据全没了
+### 初始化后数据丢失
+
+**现象**：`pnpm db:init` 之后原来的数据全没了
 
 **原因**：`pnpm db:init`（即 `fba init`）会先 `drop_all` 再 `create_all`，然后灌种子数据并把 Alembic 标到 head。它是给全新环境用的，执行前会让你确认（默认是 `n`）。
 
@@ -123,7 +143,9 @@ pnpm db:upgrade
 
 出处：[`apps/api/backend/alembic/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/alembic/AGENTS.md)、[`CONTRIBUTING.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/CONTRIBUTING.md)
 
-### `种子数据里没有 admin 账号，初始化流程可能已经变了`
+### 种子里没有 admin 账号
+
+**现象**：`种子数据里没有 admin 账号，初始化流程可能已经变了`
 
 **原因**：`DATABASE_PK_MODE` 不是 `'snowflake'`。三种数据库的种子 SQL 都只有雪花 ID 版本（`init_snowflake_test_data.sql`），自增模式下找不到种子文件，这一步会被跳过，没有任何提示，于是库里没有 admin 账号，初始化在最后设置管理员密码时失败。注意 `core/conf.py` 里这个配置的默认值是 `'autoincrement'`，`.env` 漏写这一行时同样会踩到。
 
@@ -131,7 +153,9 @@ pnpm db:upgrade
 
 出处：[`CONTRIBUTING.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/CONTRIBUTING.md)「换数据库 / 接对象存储」、[`apps/api/backend/cli.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/cli.py)
 
-### 改了模型，后端也自动重启了，可表结构没变
+### 改模型后表结构没变
+
+**现象**：改了模型，后端也自动重启了，可表结构没变
 
 **原因**：`pnpm dev` 里的 `--reload` 只会重启进程、重新 import 模型，不会改已经存在的表。
 
@@ -146,7 +170,9 @@ pnpm db:upgrade
 
 出处：[`CLAUDE.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/CLAUDE.md)「数据库结构改动一律走 alembic」、[`apps/api/backend/alembic/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/alembic/AGENTS.md)
 
-### `Cannot insert explicit value for identity column in table '…' when IDENTITY_INSERT is set to OFF. (544)`
+### IDENTITY 列插入失败
+
+**现象**：`Cannot insert explicit value for identity column in table '…' when IDENTITY_INSERT is set to OFF. (544)`
 
 **原因**：这个错误只出现在 SQL Server 上，并且只出现在**由迁移建出来的表**上。Alembic autogenerate 渲染不出模型里 Python 侧的 `default=snowflake.generate`，写出来的 id 列被 SQL Server 建成了 `IDENTITY`，之后任何 INSERT 都会失败。用 `create_all` 建的表不会这样，所以开发库和测试库都看不出问题。
 
@@ -154,7 +180,9 @@ pnpm db:upgrade
 
 出处：[`apps/api/backend/alembic/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/alembic/AGENTS.md)「迁移建表时雪花主键会变成 IDENTITY」
 
-### 第一次跑 pytest 或 E2E 就报数据库连接错误
+### 测试库连接失败
+
+**现象**：第一次跑 pytest 或 E2E 就报数据库连接错误
 
 **原因**：两套测试都跑在独立的 `fba_test` 库上，不用开发库 `fba`。这个库要先手工建一次，没建的时候报的只是一句 SQLAlchemy 连接错误，看不出原因。
 
@@ -172,7 +200,9 @@ pnpm test
 
 ## 前端开发
 
-### ID `2049629108245233664` 变成了 `2049629108245233700`，更新或删除改错了记录
+### 雪花 ID 精度丢失
+
+**现象**：ID `2049629108245233664` 变成了 `2049629108245233700`，更新或删除改错了记录
 
 **原因**：雪花 ID 大约是 2^61，超过了 JavaScript 的 `Number.MAX_SAFE_INTEGER`（2^53-1）。一旦当数字解析，就会丢失精度，连续几个 ID 甚至会变成同一个值，拿它回传就会命中别的记录。路由参数也会出这个问题：TanStack Router 默认对 search 值做 `JSON.parse`。
 
@@ -180,7 +210,9 @@ pnpm test
 
 出处：[`CLAUDE.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/CLAUDE.md) 硬纪律 6
 
-### `pnpm e2e -- tests/xxx.spec.ts` 只想跑一个文件，结果跑了全部用例
+### E2E 跑了全部用例
+
+**现象**：`pnpm e2e -- tests/xxx.spec.ts` 只想跑一个文件，结果跑了全部用例
 
 **原因**：pnpm 会把 `--` 原样传给 Playwright，后面的文件名和参数全被忽略，于是跑的是全套（十几分钟），看起来只像是「这个文件好慢」。
 
@@ -192,7 +224,9 @@ cd apps/web && pnpm e2e tests/dept-crud.spec.ts
 
 出处：[`apps/web/e2e/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/AGENTS.md)
 
-### 文档站构建报 `Node.js v22.23.3 is not supported by Astro!`
+### 文档站 Node 版本过低
+
+**现象**：文档站构建报 `Node.js v22.23.3 is not supported by Astro!`
 
 **原因**：文档站（`apps/docs`）锁在 Astro 7.3.x。`astro@7.4.4` 要求 Node ≥ 22.23.4，而仓库 `engines` 写的是 ≥ 22.13。如果依赖被升到了 7.4（比如跑了 `pnpm update`），在较老的 Node 22 上就会报这一句。`pnpm build` 会经 turbo 构建文档站，所以整仓构建也会挂。
 
@@ -202,7 +236,9 @@ cd apps/web && pnpm e2e tests/dept-crud.spec.ts
 
 ## 部署与运维
 
-### `ENVIRONMENT=prod，但有 N 项配置不合格，拒绝启动`
+### 生产配置检查未通过
+
+**现象**：`ENVIRONMENT=prod，但有 N 项配置不合格，拒绝启动`
 
 **原因**：`ENVIRONMENT=prod` 时后端启动前会校验配置，不合格就拒绝启动。检查项包括：`TOKEN_SECRET_KEY`、`DATABASE_PASSWORD`、`REDIS_PASSWORD` 的强度；`REQUEST_LIMITER_ENABLED` 必须为 true（验证码按参数走，不强制）；`CORS_ALLOWED_ORIGINS` 不能包含 `*`、`localhost`、`127.0.0.1`；`DATABASE_USER` 不能是 `sa`、`root`、`postgres` 这类超级用户。
 
@@ -214,7 +250,9 @@ python -c "import secrets;print(secrets.token_urlsafe(32))"
 
 出处：[`apps/api/backend/core/conf.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/core/conf.py)
 
-### `ENVIRONMENT=prod，数据库检查未通过，拒绝启动`
+### 生产数据库检查未通过
+
+**现象**：`ENVIRONMENT=prod，数据库检查未通过，拒绝启动`
 
 **原因**：生产环境的后端不会自己建表，启动时会检查数据库，有三种情况会被拦下：
 
@@ -226,7 +264,9 @@ python -c "import secrets;print(secrets.token_urlsafe(32))"
 
 出处：[`apps/api/backend/alembic/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/alembic/AGENTS.md)、[`apps/api/backend/core/registrar.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/core/registrar.py)
 
-### 容器里加载配置时报 `PermissionError: [Errno 13] Permission denied`
+### 容器读不到配置文件
+
+**现象**：容器里加载配置时报 `PermissionError: [Errno 13] Permission denied`
 
 **原因**：镜像里的进程以 `fba` 用户（uid 1000）运行，而部署检查要求 `.env.server` 的权限严格是 `600`。文件属主是 root 时，宿主机上看权限没问题，容器里却读不到它。这个报错出在 pydantic-settings 内部，很容易被当成配置内容写错了。
 
@@ -239,7 +279,9 @@ chmod 600       .env.server
 
 出处：[`deploy/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/deploy/AGENTS.md)「`.env.server` 属主必须是 uid 1000」
 
-### API 容器起来了，健康检查一直连不上数据库
+### 容器连不上数据库
+
+**现象**：API 容器起来了，健康检查一直连不上数据库
 
 **原因**：数据库或 Redis 跑在宿主机上（宝塔面板自带的就是这种），而 `.env.server` 里写的是 `127.0.0.1`。在容器的桥接网络里，`127.0.0.1` 指向的是容器自己。
 
@@ -247,7 +289,9 @@ chmod 600       .env.server
 
 出处：[`deploy/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/deploy/AGENTS.md)「容器连宿主机上的数据库，不能填 127.0.0.1」
 
-### 国内服务器上 `docker compose pull` 卡住不动
+### 镜像拉取卡住
+
+**现象**：国内服务器上 `docker compose pull` 卡住不动
 
 **原因**：GHCR 在国内经常被限速到每秒几十 KB。不会报错，看着像卡住了，其实是一层镜像要下好几个小时。
 
@@ -255,7 +299,9 @@ chmod 600       .env.server
 
 出处：[`deploy/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/deploy/AGENTS.md)「GHCR 在国内会被限速到几十 KB/s」
 
-### `/healthz` 一直是绿的，但 API 其实已经挂了
+### 健康检查误报正常
+
+**现象**：`/healthz` 一直是绿的，但 API 其实已经挂了
 
 **原因**：`/healthz` 是 web 容器里的 nginx 自己 `return 200`，只能证明 nginx 还活着。经域名去探一个不存在的路径，也会被前端的 history fallback 接住，返回 200 加 `index.html`。
 
@@ -263,7 +309,9 @@ chmod 600       .env.server
 
 出处：[`deploy/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/deploy/AGENTS.md)「健康检查」、[`deploy/README.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/deploy/README.md)「外部监控探哪几条」
 
-### 发版后页面报 `Failed to fetch dynamically imported module`
+### 发版后分片加载失败
+
+**现象**：发版后页面报 `Failed to fetch dynamically imported module`
 
 **原因**：这不是服务器错误，而是前后版本不一致。浏览器里开着的还是旧版前端，它要加载的代码分片在新部署里已经不存在了。
 
@@ -271,7 +319,9 @@ chmod 600       .env.server
 
 出处：[`apps/web/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/AGENTS.md)「错误页分两支」
 
-### `Multiple artifacts named "github-pages" were unexpectedly found for this workflow run`
+### Pages artifact 重名
+
+**现象**：`Multiple artifacts named "github-pages" were unexpectedly found for this workflow run`
 
 **原因**：在 GitHub Actions 里「重跑失败的 job」时，同一个 run 会再跑一次 attempt。`upload-pages-artifact` 每次都会新建一个名为 `github-pages` 的 artifact，不会覆盖上一次留下的那份，`deploy-pages` 读到两份同名的就报错退出。
 
@@ -279,6 +329,6 @@ chmod 600       .env.server
 
 出处：[`.github/workflows/ci.yml`](https://github.com/yile2020/fastapi-react-admin/blob/main/.github/workflows/ci.yml)（`pages` job）
 
-## 没找到你的问题？
+## 其他问题
 
 先看[快速开始](/getting-started/quick-start/)和[部署到服务器](/getting-started/deployment/)的步骤是否都走过；仍然不行，到 [GitHub Issues](https://github.com/yile2020/fastapi-react-admin/issues) 贴上报错原文。

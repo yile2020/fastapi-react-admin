@@ -1,5 +1,5 @@
 ---
-title: 能力开放（AK/SK 签名接口）
+title: 能力开放
 description: 给外部系统的只读开放接口：AK/SK + HMAC-SHA256 签名，scope、IP 白名单、防重放、限流、调用日志、增量同步与 Webhook。
 sidebar:
   order: 6
@@ -12,15 +12,15 @@ import ProductShot from '../../../components/ProductShot.astro'
 
 <ProductShot src={shot} alt="能力开放：应用管理" url="localhost:8888/open/app" />
 
-## 在界面上哪里找？
+## 界面入口
 
 | 入口 | 路径 | 权限码 | 做什么 |
 |---|---|---|---|
 | **能力开放 → 应用管理** | `/open/app` | `open:app:list`；新建 `add` · 编辑 `edit` · 删除 `del` · 重置密钥 `reset` | 发 AK/SK，设 scope、IP 白名单、限流、失效时间、启停 |
 | 应用管理里每个应用的 Webhook 抽屉 | —— | `open:webhook:list`；`add` · `edit` · `del` · `test` · `reset`（重置签名密钥）· `resend` | 登记端点、订阅事件、看投递记录、批量重发 |
-| 开放接口日志（应用管理页里点进去，不在侧边栏） | `/open/log` | `open:log:list` | 每一次开放接口调用，见[调用日志记了什么](#调用日志记了什么) |
+| 开放接口日志（应用管理页里点进去，不在侧边栏） | `/open/log` | `open:log:list` | 每一次开放接口调用，见[调用日志记了什么](#调用日志) |
 
-## 外部系统能调哪些接口？
+## 开放接口范围
 
 | 接口 | scope | 返回字段 |
 |---|---|---|
@@ -34,7 +34,7 @@ import ProductShot from '../../../components/ProductShot.astro'
 
 前缀刻意不放在 `/api/v1` 下：内部接口没有兼容承诺，对外的这一组有。管理员可以在应用管理页点「开放接口文档」，导出 OpenAPI JSON 交给对接方。
 
-## 怎么拿到 AK 和 SK？
+## 获取 AK 与 SK
 
 在「能力开放 → 应用管理」（`/open/app`，需要 `open:app:add`）里新建应用，会拿到：
 
@@ -45,7 +45,7 @@ SK 是**加密存储，不是哈希**：验签时服务端要拿 SK 重算一遍
 
 每个应用还可以设置授权的 scope、IP 白名单（单个 IP 或 CIDR，留空 = 不限）、每分钟请求上限（留空 = `OPEN_RATE_PER_MINUTE`，默认 120）、可选的失效时间，以及启用 / 停用。
 
-## 请求怎么签名？
+## 请求签名
 
 每个请求带四个请求头：
 
@@ -87,7 +87,7 @@ resp = requests.get(url, headers=sign_headers('GET', url, b'', access_key=AK, se
 
 Host 不参与签名，前面多一层反向代理改了 Host 也不会全挂。但**改写路径**就会挂，所以 `apps/web/nginx.conf` 对 `/api/` 是原样透传的。
 
-## 怎么防重放？
+## 防重放
 
 两道检查配合（[`gateway/auth.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/open/gateway/auth.py)）：
 
@@ -113,7 +113,7 @@ nonce 存活时间是窗口的两倍，所以窗口内的重放一定撞上 nonc
 
 限流**按应用计，不按 IP**。白名单比对用的来源 IP 来自 `get_request_ip`：只有直连对端在 `TRUSTED_PROXIES`（默认空）里时，它才采信 `X-Forwarded-For` / `X-Real-IP`。部署在 nginx 或负载均衡后面时要把代理地址配进去，否则白名单看到的是代理的地址，不是调用方的。
 
-## 调用日志记了什么？
+## 调用日志
 
 `/api/open/v1` 下的每个请求，无论成功失败，都在 `open_api_log` 落一行；连 AK 无效、识别不出应用的请求也记（应用为空）。每行记录：
 
@@ -128,7 +128,7 @@ nonce 存活时间是窗口的两倍，所以窗口内的重放一定撞上 nonc
 
 单独建表而不复用操作日志，有两个原因：操作日志只记 `/api/v1` 开头的请求；而对接时最要看的失败原因，多半发生在识别出应用之前。
 
-## 增量同步怎么用？
+## 增量同步
 
 两个接口都接受 `updated_since`（带时区的 ISO 8601，第一次全量同步不传）、`cursor`（上一页的 `next_cursor`，原样带回）和 `limit`（1–500，默认 100）。返回 `{"items": [...], "next_cursor": "...", "has_more": true}`，一直翻到 `has_more = false`。下一次增量同步，`updated_since` 传你收到的最大变更时间。
 
@@ -138,7 +138,7 @@ nonce 存活时间是窗口的两倍，所以窗口内的重放一定撞上 nonc
 
 这里在 SQL Server 上踩过一个真坑。`datetimeoffset(7)` 精确到 100 纳秒，Python 的 `datetime` 只到微秒，种子里 `GETDATE()` 写的时间读出来被截掉一截。结果游标永远越不过那一行，同一页无限返回。CI 的 SQL Server 任务因此连续超时三次，本地复现率 58%。现在查询先 `CAST(... AS DATETIMEOFFSET(6))`，取值、比较、排序都用同一个微秒精度的值（[`service/sync_service.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/open/service/sync_service.py)）。
 
-## Webhook 怎么收？
+## 接收 Webhook
 
 在「能力开放 → 应用管理 → Webhook」里登记接收地址（每个应用最多 10 个），选要听的事件。能订阅的事件受应用已授权的 scope 限制。签名密钥（`whsec_…`）只显示一次，和 SK 是两把不同的密钥。
 
@@ -161,7 +161,7 @@ nonce 存活时间是窗口的两倍，所以窗口内的重放一定撞上 nonc
 
 出站签名和 Standard Webhooks 规范 README 里的示例签名逐字一致（`v1,g0hM9SsE+OTPJTGt/tmIKtSyZlE3uFJELVlNIOLJ1OE=`）。不过只对 mock 和本机起的接收端测过，**没有对真实公网接收端验证过**。
 
-## 有哪些 SDK？
+## SDK
 
 | 语言 | 文件 | 函数 |
 |---|---|---|
@@ -171,7 +171,7 @@ nonce 存活时间是窗口的两倍，所以窗口内的重放一定撞上 nonc
 
 每份都是单文件、只用标准库，整个文件拷走即可。它们只负责**签名和 Webhook 验签**，不是带类型模型的完整 API 客户端。
 
-## 怎么测的？
+## 测试
 
 | 文件 | `def test_` 数 | 覆盖 |
 |---|---|---|
@@ -182,7 +182,7 @@ nonce 存活时间是窗口的两倍，所以窗口内的重放一定撞上 nonc
 
 Python 和 Node 的签名在 pytest 里对测试向量。机器上有 `node` / JDK 时，Node 和 Java 的 Webhook 验签也会跑。Java 的 `signHeaders` 不在自动化测试里：最近一次是 2026-11-01 手动编译、跑了三组向量，签名全部对上。Playwright 用例 `webhook.spec.ts` 在本机起一个接收端，按规范自己重算每一条签名。
 
-## 有哪些开关？
+## 配置项
 
 **界面上改的**（系统管理 → 参数配置 →「Webhook」），不用重启：
 
@@ -204,7 +204,7 @@ Python 和 Node 的签名在 pytest 里对测试向量。机器上有 `node` / J
 | `OPEN_WEBHOOK_RETRY_BACKOFF_SECONDS` | `15,300,3600,21600` | 失败后的重试间隔，共 5 次尝试、约 7 小时 |
 | `OPEN_WEBHOOK_ALLOW_PRIVATE_NETWORK` | `false` | 放行回环 / 私网地址和 http，**只给本地联调和 E2E**，生产保持 `false` |
 
-## 代码在哪
+## 代码位置
 
 - [`gateway/signature.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/open/gateway/signature.py)：规范化查询串、待签名字符串、常量时间比对
 - [`gateway/auth.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/open/gateway/auth.py)：八步检查、`DependsOpenApp`、scope 注册表

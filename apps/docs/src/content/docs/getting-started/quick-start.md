@@ -11,7 +11,7 @@ sidebar:
 
 <span id="需要装什么"></span>
 
-## 开始前准备什么？
+## 准备工作
 
 | 工具 | 要求 |
 |---|---|
@@ -35,7 +35,7 @@ docker compose -f docker-compose.dev.yml ps
 
 **看到什么算成功：** `fba_postgres` 和 `fba_redis` 都显示 `healthy`。首次启动需要等健康检查完成，再继续下一步。
 
-## 2. 安装依赖，准备配置
+## 2. 安装依赖与配置
 
 ```bash
 pnpm install:all
@@ -109,7 +109,7 @@ pnpm dev
 <details>
 <summary>本地开发能关闭验证码吗？</summary>
 
-可以。登录后到「系统管理 → 参数配置」，将 `LOGIN_CAPTCHA_ENABLED` 改为 `false`，立即生效。数据库配置可能覆盖 `.env`，详见[验证码配置排查](/reference/faq/#env-里设了-login_captcha_enabledfalse登录页还是要验证码)。
+可以。登录后到「系统管理 → 参数配置」，将 `LOGIN_CAPTCHA_ENABLED` 改为 `false`，立即生效。数据库配置可能覆盖 `.env`，详见[验证码配置排查](/reference/faq/#关了验证码仍要输入)。
 
 调试时也可以用 `GET /api/v1/auth/captcha` 响应的 `uuid` 查询 Redis 中的答案：
 

@@ -46,7 +46,7 @@ const { bands, caption } = Astro.props
 <style>
   .flow { margin: 1.75rem 0; display: grid; gap: 0 }
   .flow-band { padding: 0.9rem 1rem 1rem; border: 1px solid var(--line-strong); border-radius: 0.9rem; background: color-mix(in oklab, var(--sl-color-accent) 3%, transparent) }
-  .flow-label { display: block; margin-bottom: 0.7rem; font-family: var(--__sl-font-mono); font-size: 0.72rem; color: var(--sl-color-gray-3) }
+  .flow-label { display: block; margin-bottom: 0.7rem; font-family: var(--__sl-font-mono); font-size: var(--fs-2xs); color: var(--sl-color-gray-3) }
   /* 宽屏：一条带里的节点等宽排成一行；窄屏：竖着排，箭头朝下。不用 flex-wrap —— 折行后行尾会挂着一个指向空处的箭头 */
   ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 1.5rem; grid-template-columns: minmax(0, 1fr) }
   li {
@@ -56,21 +56,21 @@ const { bands, caption } = Astro.props
   }
   li:not(:last-child)::after {
     content: '↓'; position: absolute; left: 50%; bottom: -1.35rem; transform: translateX(-50%);
-    font-size: 0.85rem; line-height: 1; color: var(--sl-color-accent);
+    font-size: var(--fs-sm); line-height: 1; color: var(--sl-color-accent);
   }
   @media (min-width: 50rem) {
     ol { grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 1.4rem }
     li:not(:last-child)::after { content: '→'; left: auto; bottom: auto; right: -1.15rem; top: 50%; transform: translateY(-50%) }
   }
-  strong { font-size: 0.875rem; font-weight: 650; color: var(--sl-color-white); line-height: 1.4 }
-  small { font-size: 0.72rem; line-height: 1.5; color: var(--sl-color-gray-3) }
+  strong { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--sl-color-white); line-height: 1.4 }
+  small { font-size: var(--fs-2xs); line-height: 1.5; color: var(--sl-color-gray-3) }
   .flow-node--hl { background: var(--diagram-hl-bg); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sl-color-accent) 55%, transparent) }
   .flow-node--hl strong { color: var(--sl-color-accent-high) }
   .flow-hop { margin: 0; display: grid; justify-items: center; padding: 0.15rem 0 }
   .flow-hop::before, .flow-hop::after { content: ''; width: 1px; height: 0.7rem; border-left: 1px dashed var(--sl-color-accent) }
   .flow-hop span {
     padding: 0.25rem 0.75rem; border-radius: 999px; border: 1px dashed var(--line-strong);
-    font-family: var(--__sl-font-mono); font-size: 0.72rem; color: var(--sl-color-gray-2); text-align: center;
+    font-family: var(--__sl-font-mono); font-size: var(--fs-2xs); color: var(--sl-color-gray-2); text-align: center;
   }
-  figcaption { margin-top: 0.8rem; text-align: center; font-size: 0.8rem; color: var(--sl-color-gray-3) }
+  figcaption { margin-top: 0.8rem; text-align: center; font-size: var(--fs-sm); color: var(--sl-color-gray-3) }
 </style>

@@ -7,7 +7,7 @@ sidebar:
 
 The AI assistant is a chat interface (a full page, plus a side drawer you can open over any screen) that answers questions and performs admin tasks by calling registered backend tools. Every tool call runs as the signed-in user, inside that user's permission codes and row-level data scope. A write action is previewed first and only runs after the user clicks **Confirm**. Every call, including refused ones, is written to an audit table, and external systems can reach the same tools through an MCP gateway that applies the same checks.
 
-## Where is it in the UI?
+## UI entry points
 
 | Screen | Path | What it is |
 |---|---|---|
@@ -23,7 +23,7 @@ Both chat entry points share one hook ([`use-chat-session.ts`](https://github.co
 In the [demo](https://fra.wubunan.com/sign-in) (`admin` / `123456`), these pages are under **AI assistant**. Each deployment configures its own model key, so don't count on the demo chat answering. When no provider is configured, the chat shows an explicit "no model provider configured" error instead of failing silently.
 :::
 
-## Which model providers can it use?
+## Model providers
 
 Every provider is called through the OpenAI-compatible `POST {base_url}/chat/completions` with streaming. The backend uses plain `httpx` and no vendor SDK ([`llm/client.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/ai/llm/client.py)). The provider type only pre-fills defaults:
 
@@ -52,7 +52,7 @@ AI_MCP_ENABLED = false
 
 `native` is a hand-written OpenAI-compatible function-calling loop. `pydantic_ai` hands the tools to pydantic-ai as an external toolset that the framework itself cannot execute. According to the plugin notes, both engines produced the same tool-call sequence for the same prompts on an internal gateway running Qwen3-VL.
 
-## How does the assistant stay inside the user's permissions?
+## Permission boundaries
 
 The model, and the engine that drives it, are treated as untrusted. They can only *propose* a tool call. A single module, [`core/dispatcher.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/ai/core/dispatcher.py), decides whether the call runs, and it is the only layer of the plugin that cannot be swapped out:
 
@@ -63,7 +63,7 @@ The model, and the engine that drives it, are treated as untrusted. They can onl
 
 Superusers bypass permission codes and data scopes, so the seeded `admin` account sees every tool. Tool results are sent back to the model provider, so they are trimmed before they leave: results are cut at 4,000 characters, and `user_list` returns at most 30 rows without email or phone number.
 
-## What happens before a write action runs?
+## Confirming writes
 
 12 of the 23 built-in tools change data. For each of them:
 
@@ -78,7 +78,7 @@ The atomic claim fixed a real bug. Before the fix, five concurrent confirmations
 Setting `AI_CONFIRM_MUTATING_TOOLS = false` removes step 3, and writes then run as soon as the model asks for them. There are no delete tools at all: deletions can't be undone and cascade to child records, users and role grants.
 :::
 
-## Which tools ship with it, and how do I add one?
+## Built-in tools
 
 | Domain | Read | Write (preview + confirm) |
 |---|---|---|
@@ -108,7 +108,7 @@ async def dept_rename(db: AsyncSession, ctx: RunContext, dept_id: str, new_name:
 
 The JSON Schema the model sees is generated from the function signature. The `db` and `ctx` parameters are injected by the dispatcher and hidden from the model.
 
-## What is recorded in the audit log?
+## Audit records
 
 Each call writes one row to `ai_tool_invocation`: user, conversation, tool name, status (success, failed, denied or pending confirmation), permission code, arguments redacted with the operation log's key list (`OPERA_LOG_REDACT_KEYS`), result summary, error, duration and channel (`mcp:<client_id>` for MCP calls).
 
@@ -116,7 +116,7 @@ Each call writes one row to `ai_tool_invocation`: user, conversation, tool name,
 
 The audit insert runs inside a SAVEPOINT, so if it fails, only that one audit row is lost and the conversation carries on (measured in [`test_ai_audit.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/ai/tests/test_ai_audit.py)). The log is under **AI assistant → Tool logs** (permission `ai:log:list`). In the chat itself, each answer shows its tool trace (tool, permission code, outcome, duration) above the text, and the trace is saved with the message.
 
-## How do external systems use the same tools over MCP?
+## MCP access
 
 `/api/v1/ai/mcp` speaks MCP Streamable HTTP (stateless, JSON responses). It is off by default: with `AI_MCP_ENABLED = false` it returns 404. The gateway doesn't execute anything itself. It lists tools through the same filter and runs calls through the same dispatcher, so permissions, data scope and audit work exactly as in the web chat. To issue a credential, go to **AI assistant → MCP credentials**. The `fra_mcp_…` token is shown once, and only its SHA-256 hash is stored.
 
@@ -136,7 +136,7 @@ The external system declares which user it is acting for, so the gateway trusts 
 
 Disabling, deleting or regenerating a credential takes effect on the next request, because nothing is cached. Disabling the AI plugin closes the gateway. The plugin notes record a test run against a real uvicorn server with the official `mcp` Python client: a STAFF account was refused `dept_list`, a user outside the allow-list got 403 at the HTTP layer, four calls left four audit rows tagged `mcp:e2e`, and with a quota of 5, seven requests returned 5 × 200 and 2 × 429 (`Retry-After: 60`).
 
-## Which settings are there?
+## Settings
 
 Permission codes per screen: chat `ai:chat:use` · model credentials `ai:provider:list` / `add` / `edit` / `del` · tool logs `ai:log:list` · MCP credentials `ai:mcp:list` / `add` / `edit` / `del`. The AI plugin has nothing on the Config page; everything below is set in `.env` (declared in the `[settings]` of `plugin/ai/plugin.toml`), and the backend needs a restart after a change:
 
@@ -154,14 +154,14 @@ Permission codes per screen: chat `ai:chat:use` · model credentials `ai:provide
 | `AI_WEB_BASE_URL` | `http://localhost:8888` | Base URL for the confirmation link when MCP triggers a write; **set it to the real domain before going live** |
 | `AI_EXTERNAL_HTTP_TIMEOUT` · `AI_EXTERNAL_HTTP_USE_PROXY` | `15` · `true` | Timeout for external HTTP tools (such as weather), and whether to use the proxy configured in the environment |
 
-## What does it not do?
+## Limitations
 
 - It has no delete tools. There is also no "rename menu" tool: menu titles are translated per language, so a rename would appear to succeed but leave the English UI unchanged.
 - A preview is a one-sentence description, not a field-by-field diff.
 - At most `AI_MAX_TOOL_ROUNDS` (5) rounds of tool calls run per message. The native engine doesn't compress context for long sessions.
 - MCP write confirmations always happen on the web page and are never answered by the MCP client.
 
-## How is it tested?
+## Tests
 
 Backend tests run against a real test database and Redis. The counts below are `def test_` functions; parametrized cases add more.
 
@@ -176,7 +176,7 @@ Backend tests run against a real test database and Redis. The counts below are `
 
 For most of these guards, the plugin notes also record a mutation test: the check was removed and the matching test turned red. The Playwright specs `ai-chat-confirm.spec.ts` and `ai-chat-limit.spec.ts` stub the SSE responses with `page.route`, so CI never calls a model.
 
-## Where it lives in the code
+## Source code
 
 - [`plugin/ai/core/dispatcher.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/ai/core/dispatcher.py): permission filter, data scope, confirmation, audit
 - [`plugin/ai/core/registry.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/ai/core/registry.py): `@ai_tool`, schema generated from the signature, auto-discovery

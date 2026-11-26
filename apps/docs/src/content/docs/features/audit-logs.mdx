@@ -12,7 +12,7 @@ import ProductShot from '../../../components/ProductShot.astro'
 
 <ProductShot src={shot} alt="数据变更记录" url="localhost:8888/log/change" />
 
-## 在界面上哪里找？
+## 界面入口
 
 | 入口 | 路径 | 权限码 | 做什么 |
 |---|---|---|---|
@@ -25,7 +25,7 @@ import ProductShot from '../../../components/ProductShot.astro'
 - ⚠️ 登录日志、操作日志两页的前端路由守卫目前认的是 `log:login:del` / `log:opera:del`，不是 `list` —— 只授了查看的角色打不开这两页。数据变更页认的是 `log:change:list`。
 - 数据变更记录**不受数据范围约束**：有 `log:change:list` 的人看得到所有对象的变更。
 
-## 登录日志记了什么？
+## 登录日志
 
 每一行：用户名、成功 / 失败、原因、IP 和归属地（国家 / 地区 / 城市）、浏览器、操作系统、设备、时间，以及**事件类型**：
 
@@ -42,7 +42,7 @@ import ProductShot from '../../../components/ProductShot.astro'
 - 第三方登录（GitHub / Google）只记成功。Swagger 调试口的登录不记。
 - 归属地默认用内置的离线 IP 库（`ip2region`）查，纯 IPv6 地址查不出归属地；也可以改成在线查询或关闭。结果在 Redis 里缓存一天。
 
-## 操作日志记了什么？打码怎么做的？
+## 操作日志与打码
 
 `/api/v1` 下的每个请求都记一行（包括 GET）：用户、方法、路径、接口说明、IP 与归属地、浏览器、请求参数、请求头、响应头、响应体、HTTP 状态、业务码、提示信息、耗时（毫秒）。
 
@@ -59,7 +59,7 @@ import ProductShot from '../../../components/ProductShot.astro'
 
 有 `log:change:list` 的人打开一条写操作（GET 以外）的详情，能看到**「这次改了什么」**：这个请求引起的数据变更，最多列 50 条，更多的点「还有 N 条」跳到数据变更页按这次请求筛选。反过来，数据变更页的每一条也能跳回触发它的那条操作日志。两边靠请求的 trace_id 关联。
 
-## 数据变更记录是怎么记下来的？
+## 数据变更记录
 
 不是在每个接口里手写「记一笔」，而是挂在数据库会话上：事务提交前把这个事务里改了的对象逐个比对，生成「字段 · 旧值 · 新值」，**和业务数据在同一个事务里写入** —— 业务回滚了，变更记录也不会留下。同一个事务里同一个对象改了多次，只记一行最终结果。
 
@@ -80,7 +80,7 @@ main 上已经接入的对象：
 - 一条语句改超过 500 行的批量操作，记成一行汇总。
 - 抽屉里点某个字段名，只看这个字段的历史；数据变更页把字段写进地址栏，刷新还在。
 
-## 怎么知道记录有没有被改过？
+## 防篡改校验
 
 每一条数据变更记录写入时按顺序编号，并用 HMAC-SHA256 签名：签名覆盖这一行的内容**和上一行的签名**，连成一条链。改一行、删中间一行、删末尾几行、在中间塞一行、拿另一把密钥把整条链重签一遍，都会在校验时对不上。
 
@@ -92,7 +92,7 @@ main 上已经接入的对象：
 
 签名密钥是 `.env` 里的 `DATA_CHANGE_CHAIN_KEY`，**只放环境变量、不进数据库**：拿到数据库权限的人改了记录、重算签名也对不上。它留空时用空密钥签名，只能防「手滑直接改库」，校验结果会说明这一点。设了就别换 —— 换了之后，旧记录会被单独列成「换密钥之前签的」。同时拿到数据库**和**这把密钥的人，这条链挡不住。
 
-## 记录保留多久？
+## 保留期限
 
 | 记录 | 默认 | 在哪改 |
 |---|---|---|
@@ -102,7 +102,7 @@ main 上已经接入的对象：
 
 清理任务 `maintenance.prune_logs` 每天 03:15 跑，按业务时间（登录时间、操作时间）每批 2000 行分批删。180 天来自《网络安全法》第二十一条「网络日志留存不少于六个月」；从 30 天改成 180 天的迁移**只改还停在 30 天的那条任务**，你自己改过的不动。清理数据变更记录时先挪动签名链的起点再删，所以清理之后校验仍然通过。
 
-## 有哪些开关？
+## 配置项
 
 **界面上改的**：数据变更记录的保留天数（参数配置 →「日志」）、登录 / 操作日志的保留天数（任务调度里那条任务的参数），见上一节。
 
@@ -119,7 +119,7 @@ main 上已经接入的对象：
 | `OPERA_LOG_RESPONSE_CONTENT_TYPES` | `application/json` · `text/plain` | 哪些类型的响应体会被记录 |
 | `OPERA_LOG_QUEUE_MAXSIZE` | `100000` | 写日志队列的长度，满了丢弃 |
 
-## 给自己的表接入数据变更记录
+## 接入自己的表
 
 1. 在模块或插件目录下放一个 `data_change.py`，启动时自动扫描。
 2. 调 `register_audited(...)` 登记模型，**把每一列归类**（字段 / 引用 / 敏感 / 忽略 / 软删除）；关联表用 `register_audited_set`，一对一的子表用 `register_audited_child`，记在主对象名下。
@@ -129,7 +129,7 @@ main 上已经接入的对象：
 
 新增像凭据的请求字段时，记得加进 `OPERA_LOG_REDACT_KEYS`：有一条测试扫描所有接口的 schema，像凭据却没打码的字段会让它失败。逐条的说明和踩过的坑在 [`common/data_change/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/common/data_change/AGENTS.md)。
 
-## 它不做什么
+## 已知限制
 
 - **不记**：个人偏好、密码历史、会话的建立与结束（这些在登录日志里）；裸 SQL、迁移脚本、种子数据造成的改动。
 - 第三方登录失败、Swagger 调试口的登录不进登录日志。
@@ -137,7 +137,7 @@ main 上已经接入的对象：
 - 数据变更记录（含防篡改链）的测试在 CI 的 PostgreSQL、SQL Server 两个 job 上都跑，MySQL 上还没有验证过。
 - 登录日志、操作日志的保留天数不在参数配置页上，要去改定时任务的参数。
 
-## 代码在哪
+## 代码位置
 
 - 登录日志：[`login_log_service.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/service/login_log_service.py) · IP 与浏览器解析 [`utils/request_parse.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/utils/request_parse.py)
 - 操作日志：[`middleware/opera_log_middleware.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/middleware/opera_log_middleware.py) · 「像密钥的键名」判定 [`common/secret_keys.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/common/secret_keys.py)
@@ -145,7 +145,7 @@ main 上已经接入的对象：
 - 清理：[`tasks/maintenance/tasks.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/task/tasks/maintenance/tasks.py) 的 `prune_logs`
 - 前端：[`pages/log-login/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/log-login) · [`pages/log-opera/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/log-opera) · [`pages/log-change/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/log-change) · 各页面共用的「变更记录」抽屉 [`_shared/data-change/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/_shared/data-change)
 
-## 怎么测的
+## 测试
 
 后端连真实的数据库和 Redis：
 
@@ -156,6 +156,6 @@ main 上已经接入的对象：
 
 浏览器端（Playwright）：[`data-change.spec.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/tests/data-change.spec.ts)（改部门名 → 行操作「变更记录」看到旧值 → 新值 → 数据变更页按对象筛 → 跳到这次请求的操作日志；操作日志详情「这次改了什么」→ 去数据变更看全部）、[`login-events.spec.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/tests/login-events.spec.ts)（密码连续输错被锁 → 登录日志按「账号被锁」筛出来）。
 
-## 在演示站里试试
+## 在线体验
 
 [在线演示](https://fra.wubunan.com/sign-in)（`admin` / `123456`）：到「系统管理 → 部门管理」改一个部门的名字，再点这一行的「变更记录」，能看到旧名字 → 新名字；点进去跳到触发它的那条操作日志，看请求参数和耗时。`admin` 是超级管理员，数据变更页上的「校验完整性」也能点。演示站是共用的，改完请改回去。

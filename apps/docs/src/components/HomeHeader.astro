@@ -76,7 +76,8 @@ const sections = DOC_SECTIONS.map((section) => ({ label: en ? section.en : secti
     position: relative; pointer-events: auto;
     /* 居中：空隙的 flex-grow 从 1 收到 0 的过程中，没分出去的那部分空白由它两边平分，两块就往中间走 */
     display: flex; align-items: center; justify-content: center;
-    width: 100%; max-width: 72rem; height: 100%; margin: 0 auto;
+    /* 和正文同宽（首页的 --sl-content-width 是 68rem，theme.css）：两块零件的外沿对齐正文左右边。原来是 72rem，比正文两边各宽出 2rem */
+    width: 100%; max-width: var(--sl-content-width); height: 100%; margin: 0 auto;
     transition: height 0.5s var(--ease), margin-top 0.5s var(--ease);
   }
   :root[data-scrolled] .home-bar { height: 2.9rem; margin-top: 0.35rem }
@@ -104,6 +105,12 @@ const sections = DOC_SECTIONS.map((section) => ({ label: en ? section.en : secti
   /* 榫：右边中段凸出去一截 */
   .joint--tenon { flex: 0 1 auto; gap: 1.25rem }
   :root[data-scrolled] .joint--tenon { padding: 0 0.9rem 0 0.7rem; color: var(--tenon-fg) }
+  /* 写在 .joint 那条 transition 后面，否则同优先级被它盖掉、flex-grow 没有过渡。
+     合拢后仍和正文同宽：空隙收掉的那段由「榫」长过去补上，看起来是深紫的榫一路插进右边的卯，而不是两块缩到屏幕中间 */
+  @media (min-width: 50rem) {
+    .joint--tenon { flex: 0 1 auto; transition: flex-grow 0.55s var(--ease), padding 0.5s var(--ease), color 0.3s ease }
+    :root[data-scrolled] .joint--tenon { flex-grow: 1 }
+  }
   .joint--tenon::before {
     right: calc(-1 * var(--tab)); border-radius: var(--r) 0 0 var(--r); background: var(--tenon-bg);
     clip-path: polygon(

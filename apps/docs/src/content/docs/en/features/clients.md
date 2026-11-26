@@ -1,5 +1,5 @@
 ---
-title: Desktop and mobile clients
+title: Desktop and mobile
 description: An Electron desktop app with Windows, macOS and Linux installers, auto-update and silent printing, plus a native Expo / React Native mobile app.
 sidebar:
   order: 9
@@ -7,7 +7,7 @@ sidebar:
 
 The repo ships two clients alongside the browser. `apps/desktop` runs the same web build inside Electron and adds what a browser can't do: silent printing, local hardware through native helper processes, a refresh token held by the main process, and auto-update. Each GitHub Release carries installers for Windows, macOS and Linux. `apps/mobile` is a native Expo / React Native app with its own screens, not a WebView around the web pages. It shares the API client and translations with the web app.
 
-## Where do I download the desktop app?
+## Desktop downloads
 
 From [GitHub Releases](https://github.com/yile2020/fastapi-react-admin/releases). Each release has:
 
@@ -23,7 +23,7 @@ The `.blockmap` and `latest*.yml` files are for the updater; you don't download 
 Windows SmartScreen warns once (*More info → Run anyway*). macOS Gatekeeper says the app "is damaged": right-click → *Open*, or run `xattr -dr com.apple.quarantine "/Applications/Admin Desktop.app"`. The release workflow already passes `CSC_LINK`, `CSC_KEY_PASSWORD` and the `APPLE_*` secrets to electron-builder, so signing (and notarization on macOS) can be turned on by adding those secrets instead of editing the workflow. That path hasn't been exercised with real certificates yet.
 :::
 
-## What does the desktop shell add?
+## Desktop shell
 
 The shell (Electron 42) contains no business code; the pages are the same `apps/web` build. The renderer talks to the main process through `window.desktop`, which exposes six namespaces (`app`, `config`, `auth`, `print`, `devices`, `updater`). The IPC contract lives in `packages/platform/src/desktop/contract.ts`.
 
@@ -43,7 +43,7 @@ if (isDesktop()) {
 
 Measured while building the shell: `print()` takes `pageSize` in microns, while `printToPDF()` takes inches. With `preferCSSPageSize` and an `@page` rule, a 60 × 40 mm label came out at 59.944 × 39.878 mm (0.09% off).
 
-## How does the desktop app update itself?
+## Auto-update
 
 It uses `electron-updater`. The feed is `updateUrl` from `config.json` if set (a "generic" source: any static HTTP directory, e.g. on a customer's intranet). Otherwise it is the `app-update.yml` baked in at build time, which points at this repo's GitHub Releases. Updates download automatically and install when the app quits. `quitAndInstall(true, true)` installs silently and relaunches; without those flags the NSIS wizard opens and waits for a click. The renderer drives it through `desktop().updater.check()`, `.on()` and `.quitAndInstall()`. Packaged Windows and Linux builds check on their own from the main process (30 s after start, then every 4 hours; set `autoUpdate: false` to turn it off). The unsigned macOS build doesn't check automatically.
 
@@ -55,13 +55,13 @@ It uses `electron-updater`. The feed is `updateUrl` from `config.json` if set (a
 
 For an intranet mirror, publish `<version>.exe`, its `.blockmap` and `latest.yml`, uploading `latest.yml` **last** and serving it without caching. The `.blockmap` enables differential downloads, but the first update usually falls back to a full download.
 
-## How are the installers built?
+## Building installers
 
 Pushing a `v*` tag runs [`.github/workflows/release.yml`](https://github.com/yile2020/fastapi-react-admin/blob/main/.github/workflows/release.yml). A `prepare` job checks that the tag matches both `apps/web/package.json` and the backend's `__version__`, then creates **one** draft release. A matrix then builds on `windows-latest`, `macos-latest` and `ubuntu-latest`, each platform on its own OS. electron-builder runs with `--publish never` and `gh release upload` attaches the files, because electron-builder's own publisher once raced into two drafts. A person tests the draft before publishing it.
 
 Locally: `pnpm --filter web build`, then `pnpm --filter @admin/desktop package`. The desktop build does not rebuild the web app, so skipping the first step packages a stale UI without any error. For development, run the web dev server on :8888 and then `pnpm desktop:dev`.
 
-## What is the mobile app?
+## Mobile app
 
 `apps/mobile` uses Expo SDK 57, React Native 0.86 and Expo Router, styled with uniwind (Tailwind CSS v4 for React Native) and `react-native-reusables` components. It targets Android and iOS only.
 
@@ -70,7 +70,7 @@ Locally: `pnpm --filter web build`, then `pnpm --filter @admin/desktop package`.
 - **Sign-in:** password or SMS code, both behind the image captcha; accounts with two-factor enter their code as a second step (someone required to enrol but not yet enrolled must do it on the web first). The access token is stored in `expo-secure-store` (Keystore / Keychain), never `AsyncStorage`. The refresh token stays in the httpOnly cookie; on Android, React Native's cookie jar sends it back automatically and keeps it across cold starts.
 - **Server address is set in the app** and stored on the device. Before saving, the app probes `/auth/captcha` to confirm the address is a reachable backend. The same `oklch()` colour tokens as the web app render pixel-identical on Android.
 
-## What doesn't the mobile app do yet?
+## Mobile limitations
 
 - Verified by hand on Android only (sign-in → permission gating → paging → detail → delete confirmation → toast). Newer screens, such as SMS sign-in and notice attachments, have so far passed only `tsc`, ESLint and the bundle build. **iOS has never been run.**
 - There are no automated mobile tests. The CI gate is `pnpm build`, which includes `expo export --platform android` and catches bundle-time failures only.
@@ -80,7 +80,7 @@ Locally: `pnpm --filter web build`, then `pnpm --filter @admin/desktop package`.
 
 To run it: `pnpm --filter api dev:host` (backend on `0.0.0.0:8088`), then `pnpm mobile:dev`, and open the printed `exp://…:8800` address in Expo Go for SDK 57.
 
-## Which settings are there?
+## Settings
 
 | Client | Where | Key | Default | Notes |
 |---|---|---|---|---|
@@ -93,7 +93,7 @@ To run it: `pnpm --filter api dev:host` (backend on `0.0.0.0:8088`), then `pnpm 
 | Desktop | same | `autoUpdate` | `true` | Scheduled update checks from the main process (Windows / Linux: 30 s after start, then every 4 h); `false` turns them off, manual checks still work |
 | Mobile | The server address setting in the app, stored on the device | — | Build-time `EXPO_PUBLIC_API_BASE`, or `http://127.0.0.1:8088` if unset | Probes `/auth/captcha` before saving to confirm it is reachable. `EXPO_PUBLIC_*` is replaced at build time, so after packaging the address can only be changed in the app |
 
-## Where it lives in the code
+## Source code
 
 - [`apps/desktop/`](https://github.com/yile2020/fastapi-react-admin/tree/main/apps/desktop): `src/main/` (window, `app://` protocol, `print.ts`, `updater.ts`, `auth.ts`, `devices/`), `electron-builder.yml`
 - [`packages/platform/src/desktop/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/desktop): bridge contract, `isDesktop()` / `desktop()`, label template

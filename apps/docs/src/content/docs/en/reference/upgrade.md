@@ -7,13 +7,13 @@ sidebar:
 
 How you upgrade depends on how you use the project. If you **deploy the published images without changing the code**, pull the new images and restart; migrations run automatically. If you **forked it and built your own features on top**, merge the new upstream version into your repository, then run migrations and tests. Every release on [GitHub Releases](https://github.com/yile2020/fastapi-react-admin/releases) has an "升级" (Upgrade) section saying whether there are database migrations or config changes.
 
-## How are versions numbered?
+## Versioning
 
 Semver: breaking any of the compatibility rules below bumps the major version (1.x → 2.0), a big feature bumps the minor version (1.0 → 1.1), fixes only bump the patch (1.0.0 → 1.0.1). From 1.0.0 these rules are formally in force.
 
 The mobile app is versioned separately from the web app. It calls the internal API, so how an older app copes with a newer backend is covered by the "Internal API" row below; see "Mobile app" in the README for what it does and what stays on the web.
 
-## What is promised not to break?
+## Compatibility promises
 
 From "1.0 起的兼容约定" in the root [`CLAUDE.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/CLAUDE.md). Breaking any of these requires a major version.
 
@@ -30,7 +30,7 @@ Anything not in the table (pages, components, internal exports of `packages/*`) 
 
 The migration promise was tested: on 2026-10-31, a MySQL 8.4 database created by v0.0.1 was upgraded through the whole chain to the then-latest version with zero structural differences from the models.
 
-## How do I upgrade an image deployment?
+## Upgrading image deployments
 
 ```bash
 bash prod.sh status   # which commit the server runs and how far behind main it is
@@ -48,10 +48,10 @@ TAG=sha-abc1234 bash prod.sh up
 ```
 
 :::caution
-These two lines **only work when there are no database migrations between the two versions**. Rolling back the image does not roll back the database; if the new version brought migrations, the old image's migrate step fails with `Can't locate revision` and the whole site stays down. For versions with migrations, follow [How do I roll back to an older version?](#how-do-i-roll-back-to-an-older-version) below.
+These two lines **only work when there are no database migrations between the two versions**. Rolling back the image does not roll back the database; if the new version brought migrations, the old image's migrate step fails with `Can't locate revision` and the whole site stays down. For versions with migrations, follow [Rolling back](#rolling-back) below.
 :::
 
-## How do I roll back to an older version?
+## Rolling back
 
 **No migrations between the two versions**: pull the old tag and `up`, as in the two lines above.
 
@@ -83,9 +83,9 @@ TAG=<old> bash prod.sh up
 
 If you already switched to the old image and the site is down: bring the new version back with `TAG=<new> bash prod.sh pull && TAG=<new> bash prod.sh up`, then follow the steps above.
 
-All commands are in [Deploying to a server](/en/getting-started/deployment/).
+All commands are in [Deployment](/en/getting-started/deployment/).
 
-## Upgrading from 1.1.0 to 1.1.1 or later
+## Upgrading to 1.1.1+
 
 This applies to image deployments and forks alike, and to jumps across versions (for example 1.1.0 straight to 1.1.2).
 
@@ -123,7 +123,7 @@ If nothing like that was ever saved (for example, no SMTP authorization code was
 **Rolling back to 1.1.0 requires restoring the pre-upgrade database backup.** The migration's downgrade does not turn ciphertext back into plaintext, and 1.1.0 cannot read the new format.
 :::
 
-## How do I upgrade a fork with my own features?
+## Upgrading a fork
 
 Add upstream as a remote and **merge a tag** (not `main`, which may contain unreleased changes):
 
@@ -144,7 +144,7 @@ pnpm test                    # backend tests (needs a local fba_test database, s
 
 **Check**: `pnpm db:current` is at head, `pnpm typecheck --force` and the backend tests pass, and after `pnpm dev` you can sign in and open a few of your own pages.
 
-### What if the merge leaves two migration heads?
+### Two migration heads
 
 If you wrote your own migrations and upstream added some in this version, the chain forks into two heads and `pnpm db:upgrade` reports multiple heads. Create a merge migration with Alembic:
 
@@ -161,13 +161,13 @@ The repository's guard test `test_single_head` also turns red when there are two
 **Don't edit upstream's migration files**, even when a conflict lands in one. Databases that already ran an old migration never run it again, so an edit only makes new installs differ from old ones — silently. Fix mistakes with a new migration.
 :::
 
-### Where do conflicts usually happen?
+### Common conflict spots
 
 In files both you and upstream changed — typically the menu and permission seed data (`backend/sql/*/init_snowflake_test_data.sql`), the frontend page registry (`apps/web/src/lib/page-registry.tsx`), the sidebar and route files. Keeping your features in new files, directories or plugins instead of editing the foundation's files keeps future upgrades quiet.
 
-## How do the desktop and mobile apps upgrade?
+## Desktop and mobile apps
 
-- Desktop: download the new installer from [Releases](https://github.com/yile2020/fastapi-react-admin/releases) and install over the old one. In-app auto-update only runs when your pages call the update check — see [Desktop and mobile clients](/en/features/clients/)
+- Desktop: download the new installer from [Releases](https://github.com/yile2020/fastapi-react-admin/releases) and install over the old one. In-app auto-update only runs when your pages call the update check — see [Desktop and mobile](/en/features/clients/)
 - Mobile: rebuild and redistribute the app
 
 Old clients call the new backend with their old frontend, which is why internal API removals keep a one-minor-version overlap.
@@ -176,7 +176,7 @@ Old clients call the new backend with their old frontend, which is why internal 
 
 - [ ] Read the "Upgrade" section of the target release (and of every release you skip)
 - [ ] Back up the database
-- [ ] Know whether this version has migrations or config changes; upgrading from 1.1.0, read [that section](#upgrading-from-110-to-111-or-later) above first
+- [ ] Know whether this version has migrations or config changes; upgrading from 1.1.0, read [that section](#upgrading-to-111) above first
 - [ ] Upgrade a test environment first and smoke-test it (sign in, a few core pages, one approval)
 - [ ] Have the rollback image tag ready (`sha-<old commit>`)
 - [ ] After upgrading production, check that `/api/health/status` returns 200

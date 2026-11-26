@@ -1,0 +1,125 @@
+---
+/**
+ * 项目介绍页的「系统架构」分层图：客户端 → 接入层 → 应用层 → 数据层，自上而下是请求方向。
+ * 版式参考 Panis 文档站的项目介绍页（左边一列层名，右边是这一层的模块卡片，每张卡片下面一排能力标签）。
+ *
+ * 文字全走 props（中英文各传各的，和其他 Diagram* 一样，组件里不写给人看的话）。
+ * 每个模块都要对得上仓库里真实的目录 —— 2026-11-26 逐个核对过：apps/*、packages/*、
+ * apps/api/backend/app/{admin,task}、backend/plugin/*（以 plugin.toml 的 summary 为准）、common/*、apps/web/nginx.conf。
+ * 加了 / 删了模块、插件时回来改这一页。
+ */
+interface Card { title: string; code?: string; tags: string[]; core?: boolean }
+interface Bar { label: string; tags: string[] }
+interface Row {
+  label: string
+  sub?: string
+  cards?: Card[]
+  /** 应用层：主体卡片按两列排，下面接几条通栏（基础设施 / 公共层），右边一列虚线框的插件 */
+  columns?: number
+  bars?: Bar[]
+  plugins?: { label: string; cards: Card[] }
+}
+interface Props { rows: Row[]; caption: string; label: string }
+
+const { rows, caption, label } = Astro.props
+---
+
+<figure class="arch not-content" aria-label={label}>
+  <div class="arch-frame">
+    {rows.map((row) => (
+      <section class="arch-row">
+        <header class="arch-label">
+          <strong>{row.label}</strong>
+          {row.sub && <small>{row.sub}</small>}
+        </header>
+        <div class:list={['arch-body', { 'has-plugins': row.plugins }]}>
+          <div class="arch-main">
+            {row.cards && (
+              <div class="arch-cards" style={`--cols: ${row.columns ?? row.cards.length}`}>
+                {row.cards.map((card) => (
+                  <div class:list={['arch-card', { core: card.core }]}>
+                    <p class="arch-card-title">{card.code && <code>{card.code}</code>}<span>{card.title}</span></p>
+                    <ul class="arch-tags">{card.tags.map((tag) => <li>{tag}</li>)}</ul>
+                  </div>
+                ))}
+              </div>
+            )}
+            {row.bars?.map((bar) => (
+              <div class="arch-card arch-bar">
+                <p class="arch-card-title"><span>{bar.label}</span></p>
+                <ul class="arch-tags">{bar.tags.map((tag) => <li>{tag}</li>)}</ul>
+              </div>
+            ))}
+          </div>
+          {row.plugins && (
+            <aside class="arch-plugins">
+              <p class="arch-plugins-label">{row.plugins.label}</p>
+              {row.plugins.cards.map((card) => (
+                <div class="arch-card arch-plugin">
+                  <p class="arch-card-title">{card.code && <code>{card.code}</code>}<span>{card.title}</span></p>
+                  {card.tags.length > 0 && <ul class="arch-tags">{card.tags.map((tag) => <li>{tag}</li>)}</ul>}
+                </div>
+              ))}
+            </aside>
+          )}
+        </div>
+      </section>
+    ))}
+  </div>
+  <figcaption>{caption}</figcaption>
+</figure>
+
+<style>
+  .arch { margin: 1.5rem 0 0 }
+  .arch-frame {
+    border: 1px solid var(--sl-color-gray-5); border-radius: 0.9rem; overflow: hidden;
+    background: color-mix(in oklab, var(--sl-color-gray-7) 70%, var(--sl-color-black));
+  }
+  .arch-row { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: 1rem; padding: 1rem }
+  .arch-row + .arch-row { border-top: 1px solid var(--sl-color-gray-5) }
+  .arch-label { display: flex; flex-direction: column; gap: 0.15rem; padding-top: 0.35rem }
+  .arch-label strong { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--sl-color-white) }
+  .arch-label small { font-family: var(--__sl-font-mono); font-size: var(--fs-2xs); color: var(--sl-color-gray-3); overflow-wrap: anywhere }
+
+  .arch-body { display: grid; gap: 0.75rem; min-width: 0 }
+  .arch-body.has-plugins { grid-template-columns: minmax(0, 1fr) 11rem }
+  .arch-main { display: grid; gap: 0.75rem; align-content: start; min-width: 0 }
+  .arch-cards { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: 0.75rem }
+
+  .arch-card {
+    min-width: 0; padding: 0.7rem 0.8rem; border-radius: 0.6rem;
+    border: 1px solid var(--sl-color-gray-5); background: var(--sl-color-black);
+  }
+  .arch-card.core { border-color: color-mix(in oklab, var(--sl-color-accent) 35%, var(--sl-color-gray-5)); background: color-mix(in oklab, var(--sl-color-accent) 5%, var(--sl-color-black)) }
+  .arch-card-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem; margin: 0 0 0.5rem; line-height: var(--lh-ui) }
+  .arch-card-title code { padding: 0; background: none; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--sl-color-white) }
+  .arch-card-title span { font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--sl-color-white) }
+  .arch-card-title code + span { font-size: var(--fs-2xs); font-weight: var(--fw-regular); color: var(--sl-color-gray-3) }
+
+  .arch-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0; padding: 0; list-style: none }
+  .arch-tags li {
+    margin: 0; padding: 0.05rem 0.45rem; border-radius: 0.3rem; border: 1px solid var(--sl-color-gray-5);
+    font-size: var(--fs-2xs); line-height: var(--lh-ui); color: var(--sl-color-gray-2); white-space: nowrap;
+  }
+
+  /* 通栏：基础设施 / 公共层，标题在左、标签在右 */
+  .arch-bar { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); align-items: center; gap: 0.75rem }
+  .arch-bar .arch-card-title { margin: 0 }
+
+  /* 插件：一列虚线框，可插拔的那部分 */
+  .arch-plugins { display: grid; gap: 0.5rem; align-content: start; padding: 0.6rem; border: 1px dashed var(--sl-color-gray-4); border-radius: 0.6rem }
+  .arch-plugins-label { margin: 0; font-size: var(--fs-2xs); font-weight: var(--fw-medium); color: var(--sl-color-gray-3) }
+  .arch-plugin { padding: 0.5rem 0.6rem }
+  .arch-plugin .arch-card-title { margin-bottom: 0.35rem }
+  .arch-plugin .arch-card-title:last-child { margin-bottom: 0 }
+
+  figcaption { margin-top: 0.75rem; text-align: center; font-size: var(--fs-sm); color: var(--sl-color-gray-3) }
+
+  @media (max-width: 56rem) {
+    .arch-row { grid-template-columns: 1fr; gap: 0.6rem }
+    .arch-label { flex-direction: row; align-items: baseline; gap: 0.5rem; padding-top: 0 }
+    .arch-body.has-plugins { grid-template-columns: 1fr }
+    .arch-cards { grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)) }
+    .arch-bar { grid-template-columns: 1fr }
+  }
+</style>

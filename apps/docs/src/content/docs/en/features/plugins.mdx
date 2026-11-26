@@ -12,7 +12,7 @@ The backend's plugin system comes from upstream [fastapi-best-architecture](http
 
 <ProductShot src={shot} alt="Plugins" url="localhost:8888/system/plugin" />
 
-## Where is it in the UI?
+## UI entry points
 
 | Screen | Path | Who | What it does |
 |---|---|---|---|
@@ -21,7 +21,7 @@ The backend's plugin system comes from upstream [fastapi-best-architecture](http
 
 Every Plugins endpoint is guarded by **superuser**, not a permission code.
 
-## Which plugins are built in?
+## Built-in plugins
 
 | Plugin | What it is | Kind | Dependencies |
 |---|---|---|---|
@@ -38,7 +38,7 @@ Every Plugins endpoint is guarded by **superuser**, not a permission code.
 
 **Extending** plugins merge their routes into an existing app (`config`'s endpoints land at `/api/v1/sys/configs`, for example); **own-route** plugins bring their own set. The Plugins page lists both the declared prefix and the actual mount point.
 
-## What goes in `plugin.toml`?
+## `plugin.toml` fields
 
 ```toml
 [plugin]
@@ -67,7 +67,7 @@ WORKFLOW_AI_APPROVE_ENABLED = true
 - **How `[settings]` reaches `settings`**: precedence is process environment > `.env` > `plugin.toml`. But a key written only in `plugin.toml` and not declared in `core/conf.py` is an "extra" that **container environment variables cannot override**, which is why every built-in plugin setting is declared again in `conf.py` (type only, no default). Conversely, a key declared in `conf.py` **with** a default ignores the value in `plugin.toml`.
 - A plugin's `requirements.txt` is installed with `uv pip` and checked again on every backend start; its `.env.example` is appended to `.env` on install.
 
-## How do I install, uninstall or disable a plugin?
+## Install, uninstall and disable
 
 **Command-line install** (development environments only):
 
@@ -87,7 +87,7 @@ It unzips or clones, appends `.env.example`, installs dependencies, creates the 
 - Plugin start-up hooks (`setup` / `lifespan`) only run for plugins enabled at start-up, so that part needs a restart; a newly installed plugin's routes also appear only after a restart.
 - Disabling **does not hide menus**: those sidebar entries remain and their endpoints fail.
 
-## Which extension points can a plugin use?
+## Extension points
 
 At start-up these file names are looked for in every plugin directory and loaded if present:
 
@@ -95,11 +95,11 @@ At start-up these file names are looked for in every plugin directory and loaded
 |---|---|---|
 | `hooks.py` | The `setup(app)`, `lifespan` and `otel(app)` hooks | `ai` |
 | `notification_kinds.py` | Notification kinds (allowed channels, default policies), see [Messages and notifications](/en/features/notifications/) | `notice`, `open`, `workflow` |
-| `data_change.py` | Data change history registrations, see [Logs and audit](/en/features/audit-logs/#adding-data-change-history-to-your-own-table) | `config`, `oauth2` |
-| `dataio.py` | Import / export resources, see [Import and export](/en/features/import-export/#adding-import--export-to-your-own-list-page) | `dict`, `notice` |
+| `data_change.py` | Data change history registrations, see [Logs and audit](/en/features/audit-logs/#adding-your-own-tables) | `config`, `oauth2` |
+| `dataio.py` | Import / export resources, see [Import and export](/en/features/import-export/#list-page-integration) | `dict`, `notice` |
 | `webhook_events.py` | Open-platform webhook events | `workflow` |
 | `sms_templates.py` · `sms_providers.py` | SMS business templates · SMS providers | `workflow` (templates) |
-| `ai_tools.py` | Tools the AI assistant can call, see [AI assistant](/en/features/ai-assistant/#which-tools-ship-with-it-and-how-do-i-add-one) | `workflow` |
+| `ai_tools.py` | Tools the AI assistant can call, see [AI assistant](/en/features/ai-assistant/#built-in-tools) | `workflow` |
 
 These scans **do not check whether the plugin is enabled**: a disabled plugin's notification kinds and import / export resources stay registered, its endpoints just fail.
 
@@ -114,7 +114,7 @@ The frontend does **not** pick up a plugin's pages automatically. For a plugin t
 
 A menu whose path has no frontend route is skipped in the sidebar, with a console warning in development. The full "add a page" walkthrough is [Adding a business module from scratch](/en/guides/first-module/).
 
-## What it does not do
+## Limitations
 
 - Installing / uninstalling on the Plugins page creates no tables and runs no SQL; production cannot install plugins from the page.
 - Disabling a plugin does not hide its menus, and calls to a disabled plugin return 500 rather than a more fitting status.
@@ -123,19 +123,19 @@ A menu whose path has no frontend route is skipped in the sidebar, with a consol
 - The built-in `ai`, `sms` and `workflow` plugins have no `README.md`, so downloading their zip from the page and installing it again fails the "must have a README" check.
 - The plugin conventions are backend-only; frontend pages are wired by hand as in the four steps above.
 
-## Where is the code?
+## Source code
 
 - Plugin loading: [`plugin/core.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/core.py) (dependencies and required plugins) · [`router.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/router.py) (route injection) · [`validator.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/validator.py) (`plugin.toml` validation) · [`settings_source.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/settings_source.py) · [`status.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/status.py) (enable check) · [`hooks.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/hooks.py)
 - Installing: [`plugin/installer.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/installer.py) · command line [`cli.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/cli.py) · Plugins endpoints [`api/v1/sys/plugin.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/api/v1/sys/plugin.py)
 - Frontend: [`pages/plugin/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/plugin) · [`apps/web/src/lib/page-registry.tsx`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/src/lib/page-registry.tsx)
 - Upstream plugin docs: [FBA documentation](https://fastapi-practices.github.io/fastapi_best_architecture_docs/)
 
-## How is it tested?
+## Tests
 
 - [`tests/test_plugin_order_is_deterministic.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/tests/test_plugin_order_is_deterministic.py): plugins sorted by dependency come out in the same order every time. [`tests/test_sql_scripts.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/tests/test_sql_scripts.py): every plugin's SQL scripts are present.
 - Effects of disabling: disabling `ai` closes the MCP gateway (`test_ai_mcp.py`); disabling `workflow` removes its AI tools (`test_ai_workflow_tools.py`).
 - **Not tested**: `plugin.toml` validation, the installer, the Plugins endpoints; the Plugins page has no E2E.
 
-## Try it on the demo
+## Try the demo
 
 On the [live demo](https://fra.wubunan.com/sign-in) (`admin` / `123456`), open System → Plugins to see each plugin's declared and actual API prefix and its settings. The demo is not a development environment, so install and uninstall are refused; **please don't disable plugins**, everyone shares this instance.

@@ -12,7 +12,7 @@ Export happens on the server: click **Export** in a list page's toolbar and an x
 
 <ProductShot src={shot} alt="Department import: the preview before committing" url="localhost:8888/system/dept" />
 
-## Where is it in the UI?
+## UI entry points
 
 | List page | Export (permission code) | Import (permission code) |
 |---|---|---|
@@ -25,7 +25,7 @@ Export happens on the server: click **Export** in a list page's toolbar and an x
 
 The seed data grants **none of these import / export buttons to any non-superuser role**; tick them under Roles for the roles that need them. Business-data lists support row selection and exporting the selection; audit logs are read-only and export by filter only; tree lists have no multi-select.
 
-## What can be exported, and what does the file look like?
+## Export options and files
 
 The **Export** button opens a menu with two items:
 
@@ -40,7 +40,7 @@ The format is xlsx (default) or csv. The file is named `resource_YYYYmmdd-HHMMSS
 - Rows are ordered by ID, newest first; departments in tree order.
 - Integers above 2^53−1 (snowflake IDs) are written as text, otherwise Excel turns the last digits into zeros.
 
-## What happens with large exports?
+## Large exports
 
 | Rows | Behaviour |
 |---|---|
@@ -53,7 +53,7 @@ Each person can have at most 3 queued or running exports. A background job **che
 
 **Profile → Exports** lists only your own: queued / running (with a progress bar, refreshed every 3 seconds) / done / failed (with the reason) / expired. Files live in the private area of the default storage and are **deleted after 72 hours**; records are kept for 90 days. The cleanup job `maintenance.purge_expired_exports` runs at minute 20 of every hour and also marks exports stuck for over half an hour as failed.
 
-## What is formula injection, and how is it prevented?
+## Formula injection
 
 A cell starting with `=`, `+`, `-` or `@` is run as a formula when Excel opens the file: someone who sets their username to `=HYPERLINK(…)` can get the admin who exports the table to open a link. Leading spaces, full-width spaces and non-breaking spaces are skipped before checking, and full-width `＝ ＋ － ＠`, tab, carriage return, newline and `\0` also count.
 
@@ -62,7 +62,7 @@ A cell starting with `=`, `+`, `-` or `@` is run as a formula when Excel opens t
 
 Control characters that XML does not allow become `�`, and text over 32,767 characters (Excel's cell limit) is truncated.
 
-## What do the import template and preview look like?
+## Import template and preview
 
 **The template** is an xlsx: the first sheet has only the header row, and a second "notes" sheet lists, per column, whether it is required, a description and the allowed values. Columns with fixed options have **dropdowns**: enums like status, department codes the importer can see, role codes, dictionary type codes, up to 500 entries each. Short lists sit in the dropdown itself; long ones or ones with commas go on a hidden sheet. The dropdowns are warning-level: Excel warns about a value outside the list but does not block it, and the backend validation is what counts.
 
@@ -72,7 +72,7 @@ Control characters that XML does not allow become `�`, and text over 32,767 ch
 
 **Commit** uses a one-time token from the preview: valid for 30 minutes, usable once, bound to the importer and the resource. Every row is **validated again** at commit, because the database may have changed since the preview.
 
-## How do the three import modes differ?
+## Import modes
 
 | Mode | Row already exists | Row does not exist |
 |---|---|---|
@@ -86,11 +86,11 @@ By default the valid rows go in and the bad ones are skipped. With **Import only
 
 When rows fail you can download an **error report**: the original cells plus "row" and "reason" columns, ready to fix and import again. Only the importer can download it, and it expires with the preview token.
 
-## How does one file build a whole department tree?
+## Importing a department tree
 
 Each row has its own department code and a **parent department code** (`parent_code`). The parent can be an existing department the importer can see, or **another row in the same file**, in any order: rows are written top-down by depth at commit. Cycles are checked against the tree as it will be after the import, so moving A under B and B out of A in the same file is not mistaken for a cycle, while a real cycle is reported. If a parent row has an error, the rows under it are flagged too.
 
-## Which settings are there?
+## Settings
 
 Import and export are not on the Config page; everything is in `.env`, and the backend (and the worker) need a restart after a change:
 
@@ -108,7 +108,7 @@ Import and export are not on the Config page; everything is in `.env`, and the b
 
 They are defined in the import and export sections of [`core/conf.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/core/conf.py).
 
-## Adding import / export to your own list page
+## List page integration
 
 **Export**:
 
@@ -122,7 +122,7 @@ The Celery worker loads these definitions through `load_dataio_modules()`, so re
 
 **Import**: `register_import(ImportSpec(...))` declares the columns, the match key (`key_of`), validation, the write and the supported modes; add the `/import/template`, `/import/preview` and `/import/commit` routes; put an `<ImportSheet>` on the page. Step-by-step notes and pitfalls are in [`common/dataio/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/common/dataio/AGENTS.md).
 
-## What it does not do
+## Limitations
 
 - No `.xls` or csv import; formulas in cells are not accepted.
 - A blank cell cannot clear a field on import, and import cannot move an existing department to the top level.
@@ -137,14 +137,14 @@ A few UI texts don't match the behaviour; noted here so they don't mislead:
 - The department template says a blank `parent_code` means a top-level department, but in "Create and update" / "Update only" mode a blank **keeps the current parent**.
 - The import dialog describes all three modes as matching by "code"; dictionary items actually match by dictionary type code + label (the dictionary page's own description gets this right).
 
-## Where is the code?
+## Source code
 
 - Export: [`common/dataio/exporting.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/common/dataio/exporting.py) (registry) · [`export_service.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/service/export_service.py) · [`common/dataio/cells.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/common/dataio/cells.py) (formula injection, cell cleaning) · [`writers.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/common/dataio/writers.py) · background job [`tasks/export/tasks.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/task/tasks/export/tasks.py)
 - Import: [`common/dataio/importing.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/common/dataio/importing.py) · [`import_service.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/service/import_service.py) · xlsx reading / writing [`utils/excel_ops.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/utils/excel_ops.py)
 - Resource definitions: [`app/admin/dataio.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/admin/dataio.py) (users, departments, logs) · [`plugin/dict/dataio.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/dict/dataio.py)
 - Frontend: [`pages/_shared/data-io/`](https://github.com/yile2020/fastapi-react-admin/tree/main/packages/platform/src/pages/_shared/data-io) (export button, import sheet) · [`profile/exports-panel.tsx`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/profile/exports-panel.tsx)
 
-## How is it tested?
+## Tests
 
 Backend tests run against a real database:
 
@@ -155,6 +155,6 @@ Backend tests run against a real database:
 
 In the browser (Playwright): [`data-io.spec.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/tests/data-io.spec.ts) (the exported CSV is exactly the filtered set; the export can be downloaded again from Exports; one file builds a department tree, children before parents included) and [`user-import.spec.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/tests/user-import.spec.ts) (the preview points out three kinds of problems and commit creates only the clean rows; one token cannot be committed twice; a non-xlsx file is rejected with a reason).
 
-## Try it on the demo
+## Try the demo
 
 On the [live demo](https://fra.wubunan.com/sign-in) (`admin` / `123456`), open System → Departments, click **Import**, download the template, fill in two or three rows with one row's parent being another row in the same file, upload it and see how the preview marks new rows and problems. For export, try Logs → Sign-in log and export a csv by filter. The demo is shared, so other people see the departments you import; please delete them afterwards.

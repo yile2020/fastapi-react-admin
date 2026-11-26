@@ -9,7 +9,7 @@ sidebar:
 
 | 领域 | 内容 | 专题页 |
 |---|---|---|
-| **权限与组织** | RBAC（菜单 / 按钮 / 数据范围）· 行级数据权限 · 部门树 · 用户与角色 | [用户 · 角色 · 部门 · 菜单](/features/rbac/) · [数据权限](/features/data-permissions/) |
+| **权限与组织** | RBAC（菜单 / 按钮 / 数据范围）· 行级数据权限 · 部门树 · 用户与角色 | [用户与角色](/features/rbac/) · [数据权限](/features/data-permissions/) |
 | **导入导出** | 服务端导出 xlsx / csv（按当前筛选或勾选的行 · 大批量转后台、完成发站内消息 · 防公式注入）· 通用导入（带下拉的模板 · 预览校验 · 只新增 / 新增并更新 / 只更新 · 错误报告 · 全部成功才导入）· 一份文件建整棵部门树 | [导入导出](/features/import-export/) |
 | **登录与安全** | 图形验证码 · 失败锁定 · 密码历史与过期 · 手机验证码登录 · 二次验证（TOTP + 恢复码）· OAuth2（GitHub / Google）· 会话管理（空闲超时 + 绝对上限 · 按端限制会话数 · 被踢下线说明原因 · 强制下线） | [登录与安全](/features/login-security/) |
 | **工作区** | 可编辑布局的工作台（卡片按权限出现 · 布局按人存服务端）· 多页签（固定 / 拖拽 / 重新加载）· 命令面板 ⌘K · 快捷键 · 功能引导 · 列表列显隐与拖拽排序（写进地址栏）· 主题色 / 圆角 / 页签外观 · 每人自己的时区 · 中英双语 | [工作台与界面](/features/workspace/) · [多页签](/features/multi-tab/) |
@@ -19,12 +19,12 @@ sidebar:
 | **能力开放** | AK/SK 签名的开放接口 · scope / IP 白名单 / 防重放 / 限流 · 调用日志 · 增量同步 · Python / Node / Java SDK · Webhook 事件订阅（Standard Webhooks 签名 · 失败重试 · 投递记录 · 批量重发） | [能力开放](/features/open-api/) |
 | **消息与通知** | 站内消息（实时推送）· 通知公告（富文本 + 附件 · 发布范围 · 定时发布 · 置顶 / 级别 / 有效期 · 登录后弹窗与必须确认 · 顶部横幅 · 登录页公告 · 阅读统计）· 通知渠道路由（邮件 / 短信 / 飞书·钉钉·企业微信群机器人 · 按事件配策略 · 投递记录）· 短信（阿里云 / 腾讯云） | [消息与通知](/features/notifications/) |
 | **定时任务** | 在线调度 · cron 预览 · 执行记录 | [定时任务](/features/scheduler/) |
-| **运维** | 参数配置 · 数据字典 · 登录 / 操作日志（自动脱敏）· 数据变更记录（谁、什么时候、从哪来，把哪个字段从什么改成了什么 · 和操作日志互跳）· 服务器与 Redis 监控 · 发新版提示 · 给外部监控用的[统一健康检查地址](/getting-started/deployment/#外部监控探哪个地址) | [日志与审计](/features/audit-logs/) · [监控与健康检查](/features/monitoring/) · [参数配置与数据字典](/features/config-dict/) |
+| **运维** | 参数配置 · 数据字典 · 登录 / 操作日志（自动脱敏）· 数据变更记录（谁、什么时候、从哪来，把哪个字段从什么改成了什么 · 和操作日志互跳）· 服务器与 Redis 监控 · 发新版提示 · 给外部监控用的[统一健康检查地址](/getting-started/deployment/#外部监控) | [日志与审计](/features/audit-logs/) · [监控与健康检查](/features/monitoring/) · [参数与字典](/features/config-dict/) |
 | **多端** | Electron 桌面端（三平台安装包 · 静默打印 · 本地硬件 · 自动更新）· Expo 原生移动 App（不是 WebView 套壳） | [桌面端与移动端](/features/clients/) |
 | **开发者** | 组件沙箱（每个组件可调、可抄）· 调色盘 · 由 OpenAPI 生成的类型安全前后端契约 | [开发者工具](/features/developer-tools/) · [插件机制](/features/plugins/) |
 | **数据库** | PostgreSQL · SQL Server · MySQL，同一套代码、同一条迁移链 | [数据库](/features/databases/) |
 
-## 每项功能在哪个菜单？手机上能用吗？
+## 菜单与移动端
 
 桌面端直接加载网页端的构建产物，**网页端有的桌面端都有**，所以下表只对比网页和手机 App。「插件」一列是 `apps/api/backend/plugin/` 下的目录名，空着的是核心功能。菜单名是种子数据里的，部署方可以自己改。
 
@@ -46,12 +46,12 @@ sidebar:
 | 日志与审计 | 日志管理 → 登录日志 / 操作日志 / 数据变更 | | 无 |
 | 监控 | 系统监控 → 在线用户 / 服务器监控 / Redis 监控 | | 服务器监控 |
 
-手机 App 目前只在 Android 上手工验收过，范围和限制见[桌面端与移动端](/features/clients/#移动端还没做什么)。
+手机 App 目前只在 Android 上手工验收过，范围和限制见[桌面端与移动端](/features/clients/#移动端限制)。
 
-## 工程规矩写在哪
+## 工程规矩
 
 仓库把规矩和踩过的坑写在代码旁边：根目录的 [`CLAUDE.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/CLAUDE.md) 加 40 多份模块分册（`AGENTS.md`），按任务索引（「加列表页」「改权限模型」「写迁移」）。每条都是同一个格式——现象、原因、修法、证明它的实测或测试；CI 里跑 `pnpm ctx:check`，文档指向的文件、脚本或 testid 不存在了就报错。
 
-## 不装能先试试吗
+## 在线体验
 
 可以：登录[在线演示](https://fra.wubunan.com/sign-in)，账号 `admin` / `123456`。所有人共用这一个实例，数据可能随时被别人改掉，版本也可能比 `main` 落后一两个。
