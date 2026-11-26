@@ -44,9 +44,12 @@ async def get_my_notifications_paginated(
     title: Annotated[str | None, Query(description='标题')] = None,
     category: Annotated[int | None, Query(description='分类（0：系统、1：公告、2：任务事件、3：审批）')] = None,
     unread: Annotated[bool | None, Query(description='只看未读 / 只看已读，不传则不筛')] = None,
+    # 消息中心拿 `mine=true&unread=false` 的 total 当「清空已读」能删几条（#451）。
+    # 🔴 不放进 `/unread-count`：铃铛每次收件箱变动都重拉它，那里只许一条统计查询（`test_unread_count_is_one_scan`）
+    mine: Annotated[bool | None, Query(description='只看点名发给我本人的（能删除的），不传则不筛')] = None,
 ) -> ResponseSchemaModel[PageData[GetNotificationDetail]]:
     page_data = await notification_service.get_list(
-        db=db, viewer=await viewer_of(db, request.user), title=title, category=category, unread=unread
+        db=db, viewer=await viewer_of(db, request.user), title=title, category=category, unread=unread, mine=bool(mine)
     )
     return response_base.success(data=page_data)
 

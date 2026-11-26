@@ -72,6 +72,8 @@ export type NotificationListParams = {
   category?: number
   /** true 只看未读 · false 只看已读 · undefined 不筛 */
   unread?: boolean
+  /** 只看点名发给我本人的（= 能删的）。消息中心拿 `mine + unread=false` 的 total 当「清空已读」能删几条 */
+  mine?: boolean
 }
 
 export type UnreadCount = {
@@ -80,8 +82,6 @@ export type UnreadCount = {
   by_category: Record<string, number>
   /** 未读里必须打开确认的条数 —— 「全部已读」标不掉它们（见 `markableUnread`） */
   requires_ack_count: number
-  /** 「清空已读」会删几条：发给我本人、且已读的（#449）。公告和全员广播不算 */
-  clearable_read_count: number
 }
 
 /**
@@ -108,6 +108,7 @@ function qs(p: NotificationListParams): string {
   if (p.title) s.set('title', p.title)
   if (p.category !== undefined) s.set('category', String(p.category))
   if (p.unread !== undefined) s.set('unread', String(p.unread))
+  if (p.mine) s.set('mine', 'true')
   return s.toString()
 }
 

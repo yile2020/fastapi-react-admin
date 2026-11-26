@@ -71,7 +71,4 @@ class GetNotificationUnreadDetail(SchemaBase):
     requires_ack_count: int = Field(
         0, description='未读里必须打开确认的条数（「全部已读」不会标掉它们；total 减去它 = 「全部已读」能标的条数）'
     )
-    clearable_read_count: int = Field(
-        0, description='「清空已读」会删除的条数：发给我本人且已读的（公告和全员广播不算）'
-    )
     by_category: dict[str, int] = Field(description='按分类拆开的未读数，key 是分类数值的字符串形式')

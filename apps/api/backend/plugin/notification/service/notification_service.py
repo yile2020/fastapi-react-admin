@@ -153,7 +153,13 @@ class NotificationService:
 
     @staticmethod
     async def get_list(
-        *, db: AsyncSession, viewer: Viewer, title: str | None, category: int | None, unread: bool | None
+        *,
+        db: AsyncSession,
+        viewer: Viewer,
+        title: str | None,
+        category: int | None,
+        unread: bool | None,
+        mine: bool = False,
     ) -> dict[str, Any]:
         """
         获取「我的通知」分页列表
@@ -163,9 +169,10 @@ class NotificationService:
         :param title: 标题（模糊匹配）
         :param category: 分类
         :param unread: True 只看未读、False 只看已读、None 不筛
+        :param mine: 只看点名发给我本人的（能删的）
         :return:
         """
-        select = await notification_dao.get_select(viewer, title, category, unread=unread)
+        select = await notification_dao.get_select(viewer, title, category, unread=unread, mine=mine)
         page_data = await paging_data(db, select)
 
         # 已读状态**不是** `sys_notification` 上的列（广播不 fan-out，见模型注释），
@@ -210,8 +217,6 @@ class NotificationService:
             'total': sum(by_category.values()),
             # 「全部已读」会跳过它们：前端拿 `total - requires_ack_count` 判按钮还有没有东西可标
             'requires_ack_count': requires_ack,
-            # 「清空已读」能删几条（#449）：确实是 0 时前端把按钮灰掉，不让人确认一个什么都不做的动作
-            'clearable_read_count': await notification_dao.count_own_read(db, viewer),
             # key 转成字符串：JSON 对象的 key 本来就只能是字符串，
             # 这里显式转一次，免得前端拿到 `{0: 3}` 之后按数字下标去取
             'by_category': {str(k): v for k, v in by_category.items()},

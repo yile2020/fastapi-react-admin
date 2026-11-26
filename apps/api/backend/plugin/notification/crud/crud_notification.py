@@ -115,7 +115,7 @@ class CRUDNotification(DataScopedCRUD[Notification]):
         )
 
     async def get_select(
-        self, viewer: Viewer, title: str | None, category: int | None, *, unread: bool | None
+        self, viewer: Viewer, title: str | None, category: int | None, *, unread: bool | None, mine: bool = False
     ) -> Select:
         """
         获取「我的通知」列表查询表达式
@@ -124,9 +124,12 @@ class CRUDNotification(DataScopedCRUD[Notification]):
         :param title: 标题（模糊匹配）
         :param category: 分类
         :param unread: True 只看未读、False 只看已读、None 不筛
+        :param mine: 只看点名发给我本人的（= 能删的，同 `get_own_ids`）
         :return:
         """
         filters: list[ColumnElement[bool]] = [visible_to(viewer)]
+        if mine:
+            filters.append(Notification.recipient_id == viewer.id)
         if unread is True:
             filters.append(_unread(viewer))
         elif unread is False:
@@ -286,19 +289,6 @@ class CRUDNotification(DataScopedCRUD[Notification]):
             filters.append(~_unread(viewer))
         stmt = select(Notification.id).where(*filters)
         return list((await db.scalars(stmt)).all())
-
-    async def count_own_read(self, db: AsyncSession, viewer: Viewer) -> int:
-        """
-        「清空已读」会删几条：同 `get_own_ids(read_only=True)` 的条件，只数不取
-
-        :param db: 数据库会话
-        :param viewer: 看的人
-        :return:
-        """
-        stmt = select(func.count()).where(
-            Notification.recipient_id == viewer.id, Notification.deleted == 0, ~_unread(viewer)
-        )
-        return int(await db.scalar(stmt) or 0)
 
     async def delete_own(self, db: AsyncSession, pks: Sequence[int]) -> int:
         """

@@ -404,14 +404,17 @@ def test_delete_read_only_clears_my_read_targeted(
         assert client.put(f'{NOTIFICATIONS}/{item["id"]}/read', headers=token_headers).status_code == 200
 
     def _clearable() -> int:
-        return client.get(f'{NOTIFICATIONS}/unread-count', headers=token_headers).json()['data']['clearable_read_count']
+        """消息中心「清空已读」按钮读的那个数：`mine=true&unread=false` 的 total"""
+        res = client.get(NOTIFICATIONS, headers=token_headers, params={'mine': True, 'unread': False, 'size': 1})
+        assert res.status_code == 200, res.text
+        return res.json()['data']['total']
 
     counted = _clearable()
     assert counted >= 1
 
     res = client.delete(f'{NOTIFICATIONS}/read', headers=token_headers)
     assert res.status_code == 200, res.text
-    # 未读数接口报的条数 = 实际删掉的条数（前端拿它灰掉按钮、写进确认框）
+    # 「能清几条」的列表 total = 实际删掉的条数（前端拿它灰掉按钮、写进确认框）
     assert res.json()['data'] == counted
     assert _clearable() == 0
     items = _list(client, token_headers)

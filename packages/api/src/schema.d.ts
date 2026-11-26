@@ -8124,12 +8124,6 @@ export interface components {
              */
             requires_ack_count: number;
             /**
-             * Clearable Read Count
-             * @description 「清空已读」会删除的条数：发给我本人且已读的（公告和全员广播不算）
-             * @default 0
-             */
-            clearable_read_count: number;
-            /**
              * By Category
              * @description 按分类拆开的未读数，key 是分类数值的字符串形式
              */
@@ -20121,6 +20115,8 @@ export interface operations {
                 category?: number | null;
                 /** @description 只看未读 / 只看已读，不传则不筛 */
                 unread?: boolean | null;
+                /** @description 只看点名发给我本人的（能删除的），不传则不筛 */
+                mine?: boolean | null;
                 /** @description 页码 */
                 page?: number;
                 /** @description 每页数量 */

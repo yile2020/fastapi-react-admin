@@ -209,9 +209,12 @@ export function NotificationPage({
   // 「全部已读」标得掉的条数：必须确认的公告后端会跳过（#190），按总数判的话只剩它们时按钮还亮着、点了什么都不变
   const markable = markableUnread(unread.data)
   const mustAck = unread.data?.requires_ack_count ?? 0
-  // 「清空已读」能删几条（#451 评审：原来按钮一直亮，没东西可清也让人确认一次）。
-  // 🔴 只在**确实知道是 0** 时禁用：未读数接口挂了 `clearable` 是 undefined，按钮照旧能点（硬纪律 9，同移动端「全部已读」）
-  const clearable = unread.data?.clearable_read_count
+  // 「清空已读」能删几条（#451 评审：原来按钮一直亮，没东西可清也让人确认一次）= 发给我本人的已读条数。
+  // 🔴 单独查一页 size=1 只拿 total，**不塞进 `/unread-count`**：铃铛每次收件箱变动都重拉那个接口，后端只许它一条统计查询
+  // （`test_unread_count_is_one_scan`，第一版就是塞进去被它拦下的）。key 在 `notificationKeys.all` 下，删除 / 标已读后跟着失效。
+  // 🔴 只在**确实知道是 0** 时禁用：这条查询挂了 `clearable` 是 undefined，按钮照旧能点（硬纪律 9，同移动端「全部已读」）
+  const clearableQuery = useQuery(notificationsQuery({ page: 1, size: 1, unread: false, mine: true }))
+  const clearable = clearableQuery.data?.total
   const hasFilter = countActive(q.applied, FIELDS) > 0
 
   return (
@@ -372,7 +375,7 @@ export function NotificationPage({
         }}
       />
 
-      {/* 条数来自未读数接口的 `clearable_read_count`：已读的可能在别的页，前端自己数不出来 */}
+      {/* 条数来自 `clearableQuery`：已读的可能在别的页，前端自己数不出来 */}
       <ConfirmDialog
         open={clearReadOpen}
         onOpenChange={(o) => {
