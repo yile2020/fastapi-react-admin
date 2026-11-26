@@ -419,6 +419,7 @@
   "任务调度": "Task schedulers",
   "企业微信": "WeCom",
   "优先级 {{n}}": "Priority {{n}}",
+  "会删除发给你个人的 {{n}} 条已读通知，公告和全员通知不受影响。此操作不可撤销。": "Deletes the {{n}} read notifications sent to you personally. Announcements and all-staff messages are kept. This can't be undone.",
   "会删除发给你个人的全部已读通知，公告和全员通知不受影响。此操作不可撤销。": "Deletes every read notification sent to you personally. Announcements and all-staff messages are kept. This can't be undone.",
   "会把 {{n}} 条未读通知标记为已读，此操作不可撤销。另有 {{m}} 条必须确认的公告不会被标记，要打开读完后点「我已阅读」。": "This marks {{n}} unread notifications as read. It can't be undone. {{m}} announcements that require acknowledgement stay unread — open each one and click \"I've read this\".",
   "会把你当前全部 {{n}} 条未读通知标记为已读，此操作不可撤销。": "This marks all {{n}} of your unread notifications as read. It can't be undone.",

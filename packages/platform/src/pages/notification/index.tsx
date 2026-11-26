@@ -122,6 +122,10 @@ export function NotificationPage({
   const [deleteError, setDeleteError] = React.useState<string | null>(null)
   const [bulkOpen, setBulkOpen] = React.useState(false)
   const [clearReadOpen, setClearReadOpen] = React.useState(false)
+  // 批量 / 清空失败时的原因：确认框留着、原因写在问题下面（同单条删除）。原来 `finally` 里直接关框，
+  // 异常从 `void onConfirm()` 漏成一次没人接的 rejection，界面上什么都没有（硬纪律 9，#451 评审）
+  const [bulkError, setBulkError] = React.useState<string | null>(null)
+  const [clearError, setClearError] = React.useState<string | null>(null)
 
   // 换页 / 换筛选清掉选中：分页在服务端，留着的选中项已不在可见行里，批量删除会打到看不见的记录上
   const patch = React.useCallback(
@@ -205,6 +209,9 @@ export function NotificationPage({
   // 「全部已读」标得掉的条数：必须确认的公告后端会跳过（#190），按总数判的话只剩它们时按钮还亮着、点了什么都不变
   const markable = markableUnread(unread.data)
   const mustAck = unread.data?.requires_ack_count ?? 0
+  // 「清空已读」能删几条（#451 评审：原来按钮一直亮，没东西可清也让人确认一次）。
+  // 🔴 只在**确实知道是 0** 时禁用：未读数接口挂了 `clearable` 是 undefined，按钮照旧能点（硬纪律 9，同移动端「全部已读」）
+  const clearable = unread.data?.clearable_read_count
   const hasFilter = countActive(q.applied, FIELDS) > 0
 
   return (
@@ -239,7 +246,7 @@ export function NotificationPage({
               <Button
                 size="sm"
                 variant="outline"
-                disabled={delRead.isPending}
+                disabled={delRead.isPending || clearable === 0}
                 onClick={() => setClearReadOpen(true)}
                 data-testid="notification-clear-read"
               >
@@ -342,39 +349,55 @@ export function NotificationPage({
 
       <ConfirmDialog
         open={bulkOpen}
-        onOpenChange={setBulkOpen}
+        onOpenChange={(o) => {
+          setBulkOpen(o)
+          if (!o) setBulkError(null)
+        }}
         title={t('批量删除通知')}
         description={t('确定删除选中的 {{n}} 条通知吗？此操作不可撤销。', { n: selectedIds.length })}
+        error={bulkError}
         confirmText={t('删除')}
         destructive
         pending={delMany.isPending}
         onConfirm={async () => {
+          setBulkError(null)
           try {
             const n = await delMany.mutateAsync(selectedIds)
             setRowSelection({})
-            toast.success(t('已删除 {{n}} 条通知', { n }))
-          } finally {
             setBulkOpen(false)
+            toast.success(t('已删除 {{n}} 条通知', { n }))
+          } catch (e) {
+            setBulkError(e instanceof Error ? e.message : t('删除失败'))
           }
         }}
       />
 
-      {/* 清空前不知道会删几条（已读的可能在别的页），说清范围就够了：只动发给你个人的，公告不动 */}
+      {/* 条数来自未读数接口的 `clearable_read_count`：已读的可能在别的页，前端自己数不出来 */}
       <ConfirmDialog
         open={clearReadOpen}
-        onOpenChange={setClearReadOpen}
+        onOpenChange={(o) => {
+          setClearReadOpen(o)
+          if (!o) setClearError(null)
+        }}
         title={t('清空已读')}
-        description={t('会删除发给你个人的全部已读通知，公告和全员通知不受影响。此操作不可撤销。')}
+        description={
+          clearable === undefined
+            ? t('会删除发给你个人的全部已读通知，公告和全员通知不受影响。此操作不可撤销。')
+            : t('会删除发给你个人的 {{n}} 条已读通知，公告和全员通知不受影响。此操作不可撤销。', { n: clearable })
+        }
+        error={clearError}
         confirmText={t('清空')}
         destructive
         pending={delRead.isPending}
         onConfirm={async () => {
+          setClearError(null)
           try {
             const n = await delRead.mutateAsync()
             setRowSelection({})
-            toast.success(n > 0 ? t('已删除 {{n}} 条通知', { n }) : t('没有可清空的已读通知'))
-          } finally {
             setClearReadOpen(false)
+            toast.success(n > 0 ? t('已删除 {{n}} 条通知', { n }) : t('没有可清空的已读通知'))
+          } catch (e) {
+            setClearError(e instanceof Error ? e.message : t('删除失败'))
           }
         }}
       />

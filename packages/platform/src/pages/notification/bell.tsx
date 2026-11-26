@@ -225,7 +225,9 @@ export function NotificationBell() {
                   const to = noticeId ? null : linkOf(n)
                   const rowClass = cn(
                     'flex w-full items-start gap-3 px-4 py-3 text-start transition-colors hover:bg-muted/60',
-                    !n.read_time && 'bg-muted/30'
+                    !n.read_time && 'bg-muted/30',
+                    // 能删的行右边留出删除按钮的宽度：不留的话按钮一出现就盖住未读红点（#451 评审）
+                    n.deletable && 'pe-10'
                   )
                   const onActivate = () => {
                     setOpen(false)
@@ -308,7 +310,15 @@ export function NotificationBell() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="absolute end-2 top-2 size-6 bg-popover text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive focus-visible:opacity-100"
+                          className={cn(
+                            'absolute end-2 top-2.5 size-6 text-muted-foreground hover:text-destructive',
+                            // 🔴 看不见时也要点不到：只有 `opacity-0` 的话按钮透明但照样接点击，触屏没有悬停，
+                            // 点那一行右上角就把它删了、还没有确认（#451 评审）。
+                            // 触屏（`pointer-coarse`）一直显示：没有悬停这回事，藏起来就等于没有这个功能
+                            'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100',
+                            'focus-visible:pointer-events-auto focus-visible:opacity-100',
+                            'pointer-coarse:pointer-events-auto pointer-coarse:opacity-100'
+                          )}
                           aria-label={t('删除')}
                           title={t('删除')}
                           disabled={del.isPending && del.variables === n.id}

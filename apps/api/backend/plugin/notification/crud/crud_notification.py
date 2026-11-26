@@ -287,6 +287,19 @@ class CRUDNotification(DataScopedCRUD[Notification]):
         stmt = select(Notification.id).where(*filters)
         return list((await db.scalars(stmt)).all())
 
+    async def count_own_read(self, db: AsyncSession, viewer: Viewer) -> int:
+        """
+        「清空已读」会删几条：同 `get_own_ids(read_only=True)` 的条件，只数不取
+
+        :param db: 数据库会话
+        :param viewer: 看的人
+        :return:
+        """
+        stmt = select(func.count()).where(
+            Notification.recipient_id == viewer.id, Notification.deleted == 0, ~_unread(viewer)
+        )
+        return int(await db.scalar(stmt) or 0)
+
     async def delete_own(self, db: AsyncSession, pks: Sequence[int]) -> int:
         """
         逻辑删除这批通知 + 清掉它们的已读标记。**调用方负责先用 `get_own_ids` 过滤**

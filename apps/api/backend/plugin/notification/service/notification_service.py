@@ -210,6 +210,8 @@ class NotificationService:
             'total': sum(by_category.values()),
             # 「全部已读」会跳过它们：前端拿 `total - requires_ack_count` 判按钮还有没有东西可标
             'requires_ack_count': requires_ack,
+            # 「清空已读」能删几条（#449）：确实是 0 时前端把按钮灰掉，不让人确认一个什么都不做的动作
+            'clearable_read_count': await notification_dao.count_own_read(db, viewer),
             # key 转成字符串：JSON 对象的 key 本来就只能是字符串，
             # 这里显式转一次，免得前端拿到 `{0: 3}` 之后按数字下标去取
             'by_category': {str(k): v for k, v in by_category.items()},

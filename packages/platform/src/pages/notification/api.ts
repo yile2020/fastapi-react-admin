@@ -80,6 +80,8 @@ export type UnreadCount = {
   by_category: Record<string, number>
   /** 未读里必须打开确认的条数 —— 「全部已读」标不掉它们（见 `markableUnread`） */
   requires_ack_count: number
+  /** 「清空已读」会删几条：发给我本人、且已读的（#449）。公告和全员广播不算 */
+  clearable_read_count: number
 }
 
 /**

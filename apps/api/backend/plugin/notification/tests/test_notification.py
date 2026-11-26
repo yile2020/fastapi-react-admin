@@ -403,9 +403,17 @@ def test_delete_read_only_clears_my_read_targeted(
         assert item is not None
         assert client.put(f'{NOTIFICATIONS}/{item["id"]}/read', headers=token_headers).status_code == 200
 
+    def _clearable() -> int:
+        return client.get(f'{NOTIFICATIONS}/unread-count', headers=token_headers).json()['data']['clearable_read_count']
+
+    counted = _clearable()
+    assert counted >= 1
+
     res = client.delete(f'{NOTIFICATIONS}/read', headers=token_headers)
     assert res.status_code == 200, res.text
-    assert res.json()['data'] >= 1
+    # 未读数接口报的条数 = 实际删掉的条数（前端拿它灰掉按钮、写进确认框）
+    assert res.json()['data'] == counted
+    assert _clearable() == 0
     items = _list(client, token_headers)
     assert _find(items, 'pytest 清空 已读') is None
     assert _find(items, 'pytest 清空 未读') is not None
