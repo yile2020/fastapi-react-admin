@@ -37,6 +37,14 @@ class DeleteDictDataParam(SchemaBase):
     pks: list[int] = Field(description='字典数据 ID 列表')
 
 
+class GetDictOption(SchemaBase):
+    """字典选项（给前端下拉 / 标签用，只带展示要用的字段）"""
+
+    label: str = Field(description='字典标签')
+    value: str = Field(description='字典值（永远是字符串，数字类的字典也是）')
+    color: str | None = Field(None, description='标签颜色')
+
+
 class GetDictDataDetail(DictDataSchemaBase):
     """字典数据详情"""
 

@@ -1317,6 +1317,23 @@ Once all of these pass, sign in as the superuser: the sidebar shows 客户关系
 All the commands above were actually run and passed. What it looks like in the browser (sidebar, form interaction) was not confirmed with screenshots during verification, so click through it yourself the first time.
 :::
 
+### Optional: let operators maintain the `level` options
+
+Options that operators change or extend, like `level` (normal / important / VIP), fit the [data dictionary](/en/features/config-dict/) better than values hard-coded in the page: create a type `crm_level` under "System → Data dictionary", add three items (values `0` / `1` / `2`), and the page only names the type code:
+
+```tsx
+import { DictSelect, DictTag } from "../_shared/dict"
+
+<DictTag code="crm_level" value={row.original.level} />                        {/* table column */}
+<DictSelect code="crm_level" value={form.watch("level")}
+            onChange={(v) => form.setValue("level", Number(v))} />           {/* form: the value is a string */}
+```
+
+- The endpoint it reads needs **sign-in only**, not dictionary-management permission; a value the dictionary doesn't have (item disabled or deleted) shows as a grey raw value, and when loading fails the tag can be clicked to retry
+- 🔴 **Don't use it for values tied to a backend enum.** `status` above (0 disabled / 1 normal) is validated by the backend's `StatusType`; changing the dictionary doesn't change the backend, so keep `StatusBadge`
+- To **ship the items with the code**, do what step 7 does for menus: add them to both the seed SQL and a data migration (`utils/data_migration.py` only has the generic `insert_if_absent`, no dictionary-specific helper); to try it in your own environment, just create them in the UI
+- This subsection has not been run against this page's "customer" example: there `level` is still three values hard-coded in the page. The tests and browser checks of the dictionary-reading layer itself are in [`pages/_shared/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/_shared/AGENTS.md)
+
 ## Step 9: make data scopes take effect
 
 Data scopes need no code: they were wired in when the DAO inherited `DataScopedCRUD` in step 4. This step configures them in the UI and confirms they actually work. For how they work, see [Data permissions](/en/features/data-permissions/).

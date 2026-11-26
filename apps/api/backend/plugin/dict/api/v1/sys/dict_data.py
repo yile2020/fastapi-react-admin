@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Path, Query, Request, UploadFile
 from fastapi.responses import Response
+from pydantic import Field
 
 from backend.app.admin.schema.data_import import (
     ImportCommitDetail,
@@ -15,6 +16,7 @@ from backend.app.admin.service.import_service import import_service
 from backend.common.pagination import DependsPagination, PageData
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.schema import SnowflakeIdIn
+from backend.common.security.jwt import DependsJwtAuth
 from backend.common.security.permission import RequestPermission
 from backend.common.security.rbac import DependsRBAC
 from backend.database.db import CurrentSession, CurrentSessionTransaction
@@ -23,6 +25,7 @@ from backend.plugin.dict.schema.dict_data import (
     CreateDictDataParam,
     DeleteDictDataParam,
     GetDictDataDetail,
+    GetDictOption,
     UpdateDictDataParam,
 )
 from backend.plugin.dict.service.dict_data_service import dict_data_service
@@ -41,6 +44,27 @@ router = APIRouter()
 )
 async def get_all_dict_datas(db: CurrentSession) -> ResponseSchemaModel[list[GetDictDataDetail]]:
     data = await dict_data_service.get_all(db=db)
+    return response_base.success(data=data)
+
+
+@router.get(
+    '/options',
+    summary='批量获取字典选项（登录即可）',
+    description=(
+        '给下拉 / 标签用：只返回启用的选项、按排序升序；请求的每个编码都有一个键，没有选项的是空数组。'
+        '不要求字典管理权限 —— 普通页面的下拉得能读到它自己用的字典；字典**管理**接口照旧要 `dict:data:*`'
+    ),
+    dependencies=[DependsJwtAuth],
+)
+async def get_dict_options(
+    db: CurrentSession,
+    codes: Annotated[
+        list[Annotated[str, Field(min_length=1, max_length=32)]],
+        Query(min_length=1, max_length=20, description='字典类型编码，可重复传多个（最多 20 个）'),
+    ],
+) -> ResponseSchemaModel[dict[str, list[GetDictOption]]]:
+    # 🔴 必须声明在 `/{pk}` 之前：单段路径放在它后面会被当成 pk 解析，报 422「不是合法整数」
+    data = await dict_data_service.get_options(db=db, codes=codes)
     return response_base.success(data=data)
 
 
