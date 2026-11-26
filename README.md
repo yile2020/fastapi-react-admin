@@ -110,7 +110,7 @@ AI changes code fast, so every change needs something to catch it:
 |---|---|
 | **Access & org** | RBAC (menus / buttons / data scopes) · row-level data permissions · department tree · users & roles |
 | **Import & export** | server-side xlsx / csv export (current filter or selected rows · large exports run in the background and notify you when done · formula-injection safe) · generic import (templates with dropdowns · preview & validation · insert only / upsert / update only · error report · all-or-nothing) · build a whole department tree from one file |
-| **Sign-in & security** | captcha · lockout · password history & expiry · SMS code sign-in · two-factor auth (TOTP + recovery codes) · OAuth2 (GitHub / Google) · session management (idle timeout + absolute limit · per-client session caps · tells users why they were signed out · force sign-out) |
+| **Sign-in & security** | captcha · lockout · password history & expiry · SMS code sign-in · passkey sign-in · two-factor auth (TOTP + recovery codes) · OAuth2 (GitHub / Google) · session management (idle timeout + absolute limit · per-client session caps · tells users why they were signed out · force sign-out) |
 | **Workspace** | customizable dashboard (cards appear by permission · layout saved per user on the server) · multi-tab (pin / drag / reload) · command palette ⌘K · shortcuts · guided tour · theme / radius / tab style · per-user time zone · Chinese & English |
 | **Files & storage** | file manager with previews (pdf / docx / xlsx / images / archives) · local + S3-compatible storage · pre-signed downloads · recycle bin · instant upload · chunked & resumable uploads · attachment panel for any page |
 | **Approval workflow** | form designer · flow tree (approve / CC / conditional branches) · approve / reject / transfer / send back / take back / add approvers · timeout reminders and auto-actions · drafts · urgent · handover · AI pre-review / form filling / AI approval nodes |
@@ -174,7 +174,7 @@ The [E2E report](https://yile2020.github.io/fastapi-react-admin/e2e/) from every
 
 **Security** is on by default, and most of it needs no setup:
 
-- Sign-in: image captcha, account and IP lockout, rate limiting, TOTP two-factor
+- Sign-in: image captcha, account and IP lockout, rate limiting, TOTP two-factor, passkeys (opt-in)
 - Permissions: endpoints that need a permission check it and the data scope **in the backend** (hiding a button is only cosmetic); a test cross-checks permission codes between frontend, backend and menu data
 - Audit: sign-in log, operation log (sensitive fields redacted before storage), field-level data change records (an HMAC signature chain once the signing key is set, so changing, deleting or inserting a row is detected), kept 180 days by default
 - Deployment: with `ENVIRONMENT=prod` the backend **refuses to start** on weak secrets, a disabled rate limiter, or a database superuser account (the captcha follows its setting and isn't forced)
