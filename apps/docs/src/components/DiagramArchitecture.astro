@@ -1,125 +1,225 @@
 ---
 /**
  * 项目介绍页的「系统架构」分层图：客户端 → 接入层 → 应用层 → 数据层，自上而下是请求方向。
- * 版式参考 Panis 文档站的项目介绍页（左边一列层名，右边是这一层的模块卡片，每张卡片下面一排能力标签）。
  *
- * 文字全走 props（中英文各传各的，和其他 Diagram* 一样，组件里不写给人看的话）。
- * 每个模块都要对得上仓库里真实的目录 —— 2026-11-26 逐个核对过：apps/*、packages/*、
- * apps/api/backend/app/{admin,task}、backend/plugin/*（以 plugin.toml 的 summary 为准）、common/*、apps/web/nginx.conf。
- * 加了 / 删了模块、插件时回来改这一页。
+ * 当成一张能单独截图分享的海报来做（2026-11-26 用户要求「这是项目亮点，要能截图发给别人」）：
+ * 卡片自带抬头（logo · 项目名 · 图例）和落款（说明 · 仓库地址），截出去不靠上下文也看得懂；
+ * 层与层之间画请求流向和协议；每个模块一个线条图标，能力用「·」分隔的一行淡色字，不用一排小方框。
+ *
+ * 文字全走 props（src/data/architecture.ts，中英文各一份）。每个模块都要对得上仓库里真实的目录，见那个文件的头注释。
  */
-interface Card { title: string; code?: string; tags: string[]; core?: boolean }
-interface Bar { label: string; tags: string[] }
-interface Row {
-  label: string
-  sub?: string
-  cards?: Card[]
-  /** 应用层：主体卡片按两列排，下面接几条通栏（基础设施 / 公共层），右边一列虚线框的插件 */
-  columns?: number
-  bars?: Bar[]
-  plugins?: { label: string; cards: Card[] }
-}
-interface Props { rows: Row[]; caption: string; label: string }
+import logo from '../assets/logo.svg'
 
-const { rows, caption, label } = Astro.props
+type IconName =
+  | 'monitor' | 'laptop' | 'phone' | 'package' | 'server' | 'zap' | 'key'
+  | 'settings' | 'lock' | 'file' | 'clock' | 'activity' | 'database' | 'layers' | 'drive' | 'puzzle'
+interface Card { title: string; code: string; icon: IconName; tags: string[]; core?: boolean }
+interface Bar { label: string; tags: string[] }
+interface Layer {
+  index: string
+  label: string
+  sub: string
+  cards: Card[]
+  /** 第一张卡片竖跨两行、其余排在右边两列（应用层用：sys 的能力最多，5 个模块正好排满 3 × 2） */
+  feature?: boolean
+  /** 到下一层的请求怎么走（箭头旁边那行字）；最后一层不写 */
+  flow?: string
+  bars?: Bar[]
+  plugins?: { label: string; items: { code: string; title: string }[] }
+}
+interface Props {
+  label: string
+  brand: string
+  title: string
+  legend: { core: string; plugin: string; flow: string }
+  layers: Layer[]
+  caption: string
+  url: string
+}
+
+const { label, brand, title, legend, layers, caption, url } = Astro.props
+
+/** lucide 线条图标（24 × 24，stroke），只收这张图用得到的几个 */
+const ICONS: Record<IconName, string> = {
+  monitor: '<rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/>',
+  laptop: '<path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16"/>',
+  phone: '<rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/>',
+  package: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/>',
+  server: '<rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01M6 18h.01"/>',
+  zap: '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>',
+  key: '<circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/>',
+  settings: '<path d="M20 7h-9M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
+  lock: '<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4M16 13H8M16 17H8M10 9H8"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  activity: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+  database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5M3 12a9 3 0 0 0 18 0"/>',
+  layers: '<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65M22 12.65l-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>',
+  drive: '<path d="M22 12H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11zM6 16h.01M10 16h.01"/>',
+  puzzle: '<path d="M15.39 4.39a1 1 0 0 0 1.68-.47 2.5 2.5 0 1 1 3.01 3.01 1 1 0 0 0-.47 1.68l1.68 1.68a2.41 2.41 0 0 1 0 3.42l-1.68 1.68a1 1 0 0 1-1.68-.47 2.5 2.5 0 1 0-3.01 3.01 1 1 0 0 1 .47 1.68l-1.68 1.68a2.41 2.41 0 0 1-3.42 0l-1.68-1.68a1 1 0 0 0-1.68.47 2.5 2.5 0 1 1-3.01-3.01 1 1 0 0 0 .47-1.68l-1.68-1.68a2.41 2.41 0 0 1 0-3.42l1.68-1.68a1 1 0 0 1 1.68.47 2.5 2.5 0 1 0 3.01-3.01 1 1 0 0 1-.47-1.68l1.68-1.68a2.41 2.41 0 0 1 3.42 0z"/>',
+}
+const icon = (name: IconName) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`
 ---
 
 <figure class="arch not-content" aria-label={label}>
-  <div class="arch-frame">
-    {rows.map((row) => (
-      <section class="arch-row">
-        <header class="arch-label">
-          <strong>{row.label}</strong>
-          {row.sub && <small>{row.sub}</small>}
-        </header>
-        <div class:list={['arch-body', { 'has-plugins': row.plugins }]}>
-          <div class="arch-main">
-            {row.cards && (
-              <div class="arch-cards" style={`--cols: ${row.columns ?? row.cards.length}`}>
-                {row.cards.map((card) => (
-                  <div class:list={['arch-card', { core: card.core }]}>
-                    <p class="arch-card-title">{card.code && <code>{card.code}</code>}<span>{card.title}</span></p>
-                    <ul class="arch-tags">{card.tags.map((tag) => <li>{tag}</li>)}</ul>
+  <div class="arch-poster">
+    <header class="arch-head">
+      <div class="arch-brand">
+        <img src={logo.src} alt="" width="28" height="28" />
+        <span class="arch-brand-name">{brand}</span>
+        <span class="arch-brand-sep" aria-hidden="true"></span>
+        <span class="arch-brand-title">{title}</span>
+      </div>
+      <ul class="arch-legend">
+        <li><i class="dot core" aria-hidden="true"></i>{legend.core}</li>
+        <li><i class="dot plugin" aria-hidden="true"></i>{legend.plugin}</li>
+        <li><span class="arrow" aria-hidden="true">↓</span>{legend.flow}</li>
+      </ul>
+    </header>
+
+    <div class="arch-layers">
+      {layers.map((layer) => (
+        <>
+          <section class:list={['arch-layer', { 'is-app': layer.plugins }]}>
+            <header class="arch-layer-head">
+              <span class="arch-index">{layer.index}</span>
+              <strong>{layer.label}</strong>
+              <code>{layer.sub}</code>
+            </header>
+            <div class:list={['arch-cards', { feature: layer.feature }]}>
+              {layer.cards.map((card) => (
+                <div class:list={['arch-card', { core: card.core }]}>
+                  <span class="arch-icon" set:html={icon(card.icon)} />
+                  <div class="arch-card-text">
+                    <p class="arch-card-title"><code>{card.code}</code><span>{card.title}</span></p>
+                    <p class="arch-card-tags">{card.tags.map((tag) => <span>{tag}</span>)}</p>
                   </div>
-                ))}
-              </div>
-            )}
-            {row.bars?.map((bar) => (
-              <div class="arch-card arch-bar">
-                <p class="arch-card-title"><span>{bar.label}</span></p>
-                <ul class="arch-tags">{bar.tags.map((tag) => <li>{tag}</li>)}</ul>
-              </div>
-            ))}
-          </div>
-          {row.plugins && (
-            <aside class="arch-plugins">
-              <p class="arch-plugins-label">{row.plugins.label}</p>
-              {row.plugins.cards.map((card) => (
-                <div class="arch-card arch-plugin">
-                  <p class="arch-card-title">{card.code && <code>{card.code}</code>}<span>{card.title}</span></p>
-                  {card.tags.length > 0 && <ul class="arch-tags">{card.tags.map((tag) => <li>{tag}</li>)}</ul>}
                 </div>
               ))}
-            </aside>
+            </div>
+            {layer.plugins && (
+              <div class="arch-plugins">
+                <p class="arch-plugins-label"><span class="arch-icon small" set:html={icon('puzzle')} />{layer.plugins.label}</p>
+                <ul>
+                  {layer.plugins.items.map((item) => <li><code>{item.code}</code>{item.title}</li>)}
+                </ul>
+              </div>
+            )}
+            {layer.bars?.map((bar) => (
+              <div class="arch-bar">
+                <span class="arch-bar-label">{bar.label}</span>
+                <p class="arch-card-tags">{bar.tags.map((tag) => <span>{tag}</span>)}</p>
+              </div>
+            ))}
+          </section>
+          {layer.flow && (
+            <div class="arch-flow" aria-hidden="true">
+              <span class="arch-flow-line"></span>
+              <span class="arch-flow-label">{layer.flow}</span>
+            </div>
           )}
-        </div>
-      </section>
-    ))}
+        </>
+      ))}
+    </div>
+
+    <footer class="arch-foot">
+      <span>{caption}</span>
+      <code>{url}</code>
+    </footer>
   </div>
-  <figcaption>{caption}</figcaption>
 </figure>
 
 <style>
   .arch { margin: 1.5rem 0 0 }
-  .arch-frame {
-    border: 1px solid var(--sl-color-gray-5); border-radius: 0.9rem; overflow: hidden;
-    background: color-mix(in oklab, var(--sl-color-gray-7) 70%, var(--sl-color-black));
+  .arch-poster {
+    --arch-line: var(--sl-color-gray-5);
+    --arch-tint: color-mix(in oklab, var(--sl-color-accent) 7%, var(--sl-color-black));
+    position: relative; overflow: hidden;
+    padding: 1.25rem 1.25rem 1rem; border-radius: 1rem;
+    border: 1px solid var(--arch-line);
+    background:
+      radial-gradient(60rem 22rem at 100% 0%, color-mix(in oklab, var(--sl-color-accent) 9%, transparent), transparent 60%),
+      radial-gradient(color-mix(in oklab, var(--sl-color-gray-4) 35%, transparent) 1px, transparent 1px) 0 0 / 18px 18px,
+      var(--sl-color-black);
   }
-  .arch-row { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: 1rem; padding: 1rem }
-  .arch-row + .arch-row { border-top: 1px solid var(--sl-color-gray-5) }
-  .arch-label { display: flex; flex-direction: column; gap: 0.15rem; padding-top: 0.35rem }
-  .arch-label strong { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--sl-color-white) }
-  .arch-label small { font-family: var(--__sl-font-mono); font-size: var(--fs-2xs); color: var(--sl-color-gray-3); overflow-wrap: anywhere }
 
-  .arch-body { display: grid; gap: 0.75rem; min-width: 0 }
-  .arch-body.has-plugins { grid-template-columns: minmax(0, 1fr) 11rem }
-  .arch-main { display: grid; gap: 0.75rem; align-content: start; min-width: 0 }
-  .arch-cards { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: 0.75rem }
+  /* 抬头：logo · 项目名 · 图名，右边图例 */
+  .arch-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem 1.5rem; margin-bottom: 1.1rem }
+  .arch-brand { display: flex; align-items: center; gap: 0.6rem; min-width: 0 }
+  .arch-brand img { width: 1.75rem; height: 1.75rem; border-radius: 999px }
+  .arch-brand-name { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--sl-color-white); letter-spacing: -0.01em }
+  .arch-brand-sep { width: 1px; height: 1rem; background: var(--arch-line) }
+  .arch-brand-title { font-size: var(--fs-sm); color: var(--sl-color-gray-3) }
+  .arch-legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin: 0; padding: 0; list-style: none }
+  .arch-legend li { display: flex; align-items: center; gap: 0.4rem; margin: 0; font-size: var(--fs-2xs); color: var(--sl-color-gray-3) }
+  .dot { width: 0.7rem; height: 0.7rem; border-radius: 0.2rem }
+  .dot.core { background: var(--arch-tint); border: 1px solid color-mix(in oklab, var(--sl-color-accent) 55%, transparent) }
+  .dot.plugin { border: 1px dashed var(--sl-color-gray-3) }
+  .arrow { color: var(--sl-color-accent); font-weight: var(--fw-semibold) }
 
+  /* 每一层：编号 · 层名 · 目录，下面一排卡片 */
+  .arch-layer { padding: 0.9rem; border-radius: 0.8rem; border: 1px solid var(--arch-line); background: color-mix(in oklab, var(--sl-color-gray-7) 60%, var(--sl-color-black)) }
+  .arch-layer.is-app { border-color: color-mix(in oklab, var(--sl-color-accent) 30%, var(--arch-line)); background: color-mix(in oklab, var(--sl-color-accent) 3%, var(--sl-color-black)) }
+  .arch-layer-head { display: flex; align-items: baseline; gap: 0.55rem; margin-bottom: 0.7rem }
+  .arch-index { font-family: var(--__sl-font-mono); font-size: var(--fs-2xs); font-weight: var(--fw-semibold); color: var(--sl-color-accent-high) }
+  .arch-layer-head strong { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--sl-color-white) }
+  .arch-layer-head code { padding: 0; background: none; font-size: var(--fs-2xs); color: var(--sl-color-gray-3) }
+
+  .arch-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11.5rem), 1fr)); gap: 0.6rem }
   .arch-card {
-    min-width: 0; padding: 0.7rem 0.8rem; border-radius: 0.6rem;
-    border: 1px solid var(--sl-color-gray-5); background: var(--sl-color-black);
+    display: flex; align-items: flex-start; gap: 0.65rem; min-width: 0;
+    padding: 0.7rem 0.75rem; border-radius: 0.65rem; border: 1px solid var(--arch-line); background: var(--sl-color-black);
   }
-  .arch-card.core { border-color: color-mix(in oklab, var(--sl-color-accent) 35%, var(--sl-color-gray-5)); background: color-mix(in oklab, var(--sl-color-accent) 5%, var(--sl-color-black)) }
-  .arch-card-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem; margin: 0 0 0.5rem; line-height: var(--lh-ui) }
+  .arch-card.core { border-color: color-mix(in oklab, var(--sl-color-accent) 35%, var(--arch-line)); background: var(--arch-tint) }
+  .arch-icon {
+    flex-shrink: 0; display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: 0.55rem;
+    color: var(--sl-color-accent-high); background: color-mix(in oklab, var(--sl-color-accent) 12%, transparent);
+  }
+  .arch-icon :global(svg) { width: 1.05rem; height: 1.05rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round }
+  .arch-icon.small { width: 1.4rem; height: 1.4rem; border-radius: 0.4rem }
+  .arch-icon.small :global(svg) { width: 0.85rem; height: 0.85rem }
+  .arch-card-text { min-width: 0 }
+  .arch-card-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.1rem 0.4rem; margin: 0; line-height: var(--lh-ui) }
   .arch-card-title code { padding: 0; background: none; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--sl-color-white) }
-  .arch-card-title span { font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--sl-color-white) }
-  .arch-card-title code + span { font-size: var(--fs-2xs); font-weight: var(--fw-regular); color: var(--sl-color-gray-3) }
-
-  .arch-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0; padding: 0; list-style: none }
-  .arch-tags li {
-    margin: 0; padding: 0.05rem 0.45rem; border-radius: 0.3rem; border: 1px solid var(--sl-color-gray-5);
-    font-size: var(--fs-2xs); line-height: var(--lh-ui); color: var(--sl-color-gray-2); white-space: nowrap;
+  .arch-card-title span { font-size: var(--fs-2xs); color: var(--sl-color-gray-3) }
+  /* 能力标签：每个标签整体不断开，只在「·」处换行（原来是一整串字，会断成「React / 19」「自 / 动更新」） */
+  /* 分隔点画在每个标签左边的空隙里，整行左移一个空隙、再用 clip-path 把左边多出来的那一截裁掉（overflow: hidden 不行，裁的是左移之后的盒子）—— 换行后落在行首的那个点就被裁掉了，不会出现「· React 19」 */
+  .arch-card-tags { display: flex; flex-wrap: wrap; clip-path: inset(0 0 0 0.8em); margin: 0.2rem 0 0 -0.8em; font-size: var(--fs-2xs); line-height: var(--lh-ui); color: var(--sl-color-gray-2) }
+  .arch-card-tags span { position: relative; margin-left: 0.8em; white-space: nowrap }
+  .arch-card-tags span::before { content: '·'; position: absolute; left: -0.55em; color: var(--sl-color-gray-4) }
+  @media (min-width: 44rem) {
+    .arch-cards.feature { grid-template-columns: repeat(3, minmax(0, 1fr)) }
+    .arch-cards.feature > :first-child { grid-row: span 2 }
   }
 
-  /* 通栏：基础设施 / 公共层，标题在左、标签在右 */
-  .arch-bar { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); align-items: center; gap: 0.75rem }
-  .arch-bar .arch-card-title { margin: 0 }
+  /* 插件：一条虚线区，小药丸排开 */
+  .arch-plugins { margin-top: 0.6rem; padding: 0.65rem 0.75rem; border-radius: 0.65rem; border: 1px dashed color-mix(in oklab, var(--sl-color-gray-3) 70%, transparent) }
+  .arch-plugins-label { display: flex; align-items: center; gap: 0.45rem; margin: 0 0 0.55rem; font-size: var(--fs-2xs); font-weight: var(--fw-medium); color: var(--sl-color-gray-2) }
+  .arch-plugins ul { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0; padding: 0; list-style: none }
+  .arch-plugins li {
+    display: flex; align-items: baseline; gap: 0.35rem; margin: 0; padding: 0.2rem 0.55rem; border-radius: 999px;
+    border: 1px solid var(--arch-line); background: var(--sl-color-black); font-size: var(--fs-2xs); color: var(--sl-color-gray-3);
+  }
+  .arch-plugins li code { padding: 0; background: none; font-size: var(--fs-2xs); font-weight: var(--fw-semibold); color: var(--sl-color-white) }
 
-  /* 插件：一列虚线框，可插拔的那部分 */
-  .arch-plugins { display: grid; gap: 0.5rem; align-content: start; padding: 0.6rem; border: 1px dashed var(--sl-color-gray-4); border-radius: 0.6rem }
-  .arch-plugins-label { margin: 0; font-size: var(--fs-2xs); font-weight: var(--fw-medium); color: var(--sl-color-gray-3) }
-  .arch-plugin { padding: 0.5rem 0.6rem }
-  .arch-plugin .arch-card-title { margin-bottom: 0.35rem }
-  .arch-plugin .arch-card-title:last-child { margin-bottom: 0 }
+  /* 基础设施 / 公共层：横条 */
+  .arch-bar { display: flex; align-items: baseline; gap: 0.9rem; margin-top: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 0.55rem; background: color-mix(in oklab, var(--sl-color-gray-6) 70%, transparent) }
+  .arch-bar-label { flex-shrink: 0; min-width: 4.5rem; font-size: var(--fs-2xs); font-weight: var(--fw-semibold); color: var(--sl-color-white) }
+  .arch-bar p { margin: 0 0 0 -0.8em }
 
-  figcaption { margin-top: 0.75rem; text-align: center; font-size: var(--fs-sm); color: var(--sl-color-gray-3) }
+  /* 层与层之间：一段竖线 + 箭头 + 协议 */
+  .arch-flow { position: relative; display: flex; align-items: center; justify-content: center; gap: 0.5rem; height: 2.4rem }
+  .arch-flow-line { position: relative; width: 1.5px; height: 100%; background: linear-gradient(var(--sl-color-gray-4), var(--sl-color-accent)) }
+  .arch-flow-line::after { content: ''; position: absolute; left: 50%; bottom: -1px; width: 7px; height: 7px; border-right: 1.5px solid var(--sl-color-accent); border-bottom: 1.5px solid var(--sl-color-accent); transform: translate(-50%, 0) rotate(45deg) }
+  .arch-flow-label { position: absolute; left: calc(50% + 0.9rem); font-family: var(--__sl-font-mono); font-size: var(--fs-2xs); color: var(--sl-color-gray-3) }
 
-  @media (max-width: 56rem) {
-    .arch-row { grid-template-columns: 1fr; gap: 0.6rem }
-    .arch-label { flex-direction: row; align-items: baseline; gap: 0.5rem; padding-top: 0 }
-    .arch-body.has-plugins { grid-template-columns: 1fr }
-    .arch-cards { grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)) }
-    .arch-bar { grid-template-columns: 1fr }
+  /* 落款：说明 + 仓库地址，截出去也知道出处 */
+  .arch-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.4rem 1rem; margin-top: 1rem; padding-top: 0.8rem; border-top: 1px solid var(--arch-line); font-size: var(--fs-2xs); color: var(--sl-color-gray-3) }
+  .arch-foot code { padding: 0; background: none; font-size: var(--fs-2xs); color: var(--sl-color-gray-3) }
+
+  @media (max-width: 40rem) {
+    .arch-poster { padding: 1rem 0.75rem 0.85rem }
+    .arch-layer { padding: 0.75rem 0.6rem }
+    .arch-bar { flex-direction: column; gap: 0.2rem }
   }
 </style>

@@ -325,7 +325,11 @@ README、文档站首页和分享卡片（`og.png`）用的是同一批图，界
 
 ## 项目介绍页的「系统架构」分层图（2026-11-26）
 
-`getting-started/introduction.mdx` 的「系统架构」一节是 `src/components/DiagramArchitecture.astro`：客户端 → 接入层 → 应用层（核心模块 + 虚线框插件 + 基础设施 / 公共层两条通栏）→ 数据层，版式照 Panis 文档站的项目介绍页。
+`getting-started/introduction.mdx` 的「系统架构」一节是 `src/components/DiagramArchitecture.astro`：客户端 → 接入层 → 应用层（核心模块 + 虚线框插件 + 基础设施 / 公共层两条横条）→ 数据层。
+**当成能单独截图分享的海报做**（用户要求：这是项目亮点）：卡片自带抬头（logo · 项目名 · 图例）和落款（说明 · 仓库地址），层与层之间画请求流向和协议，每个模块一个线条图标。
+
+- ⚠️ 能力标签每个整体不断开、只在「·」处换行；分隔点画在标签左边的空隙里，整行左移再用 `clip-path: inset(0 0 0 0.8em)` 裁掉 —— 换行后行首的点被裁掉。
+  用 `overflow: hidden` 不行（裁的是左移之后的盒子，点还在可见范围里），实测出现过「· React 19」
 
 - 文字在 `src/data/architecture.ts`（中英文各一份），页面里只写一行 `<DiagramArchitecture {...architecture.zh} />`。
   🔴 **别把 props 直接写进 MDX**：`src/lib/markdown.ts` 导出给 AI 读的 `.md` 时只去掉**独占一行**的组件标签，跨多行的 props 会原样漏进 `.md` 和 `llms-full.txt`

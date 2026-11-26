@@ -10,121 +10,135 @@
  * 基础设施 / 公共层 = backend/common/*；数据层 = 三种数据库 + Redis（缓存 · 会话 · 默认的 Celery broker）+ OpenDAL 对象存储。
  * 加了 / 删了模块或插件时一起改这里。
  */
+const URL = 'github.com/yile2020/fastapi-react-admin'
+
 export const architecture = {
   zh: {
-    label: '系统架构分层图',
-    caption: '自上而下是请求方向；紫色框是核心模块，虚线框里是可插拔的插件。',
-    rows: [
+    label: 'fastapi-react-admin 系统架构分层图',
+    brand: 'fastapi-react-admin',
+    title: '系统架构',
+    legend: { core: '核心模块', plugin: '可插拔插件', flow: '请求方向' },
+    caption: '一个 monorepo：四层自上而下，前后端契约由后端生成，依赖方向由 CI 把关。',
+    url: URL,
+    layers: [
       {
-        label: '客户端', sub: 'apps/*',
+        index: '01', label: '客户端', sub: 'apps/*', flow: 'HTTPS · WebSocket',
         cards: [
-          { title: 'Web 后台', code: 'web', tags: ['工作台', '多页签', 'React 19'] },
-          { title: '桌面端', code: 'desktop', tags: ['静默打印', '本地硬件', '自动更新'] },
-          { title: '手机端', code: 'mobile', tags: ['审批', '通知', 'Expo'] },
-          { title: '共享包', code: 'packages', tags: ['api 契约', 'ui 组件', 'platform', 'i18n'] },
+          { code: 'web', title: 'Web 后台', icon: 'monitor', tags: ['工作台', '多页签', 'React 19'] },
+          { code: 'desktop', title: '桌面端', icon: 'laptop', tags: ['静默打印', '本地硬件', '自动更新'] },
+          { code: 'mobile', title: '手机端', icon: 'phone', tags: ['审批', '通知', 'Expo'] },
+          { code: 'packages', title: '共享包', icon: 'package', tags: ['api 契约', 'ui', 'platform', 'i18n'] },
         ],
       },
       {
-        label: '接入层', sub: 'HTTP · WebSocket',
+        index: '02', label: '接入层', sub: 'Nginx · Vite', flow: 'ASGI · FastAPI',
         cards: [
-          { title: '生产环境', code: 'Nginx', tags: ['静态资源', '/api 反代', '/ws 推送'] },
-          { title: '开发环境', code: 'Vite', tags: ['热更新', ':8888'] },
-          { title: '开放接口', code: '/api/open/v1', tags: ['AK/SK 签名', 'Webhook'] },
+          { code: 'Nginx', title: '生产环境', icon: 'server', tags: ['静态资源', '/api 反代', '/ws 推送'] },
+          { code: 'Vite', title: '开发环境', icon: 'zap', tags: ['热更新', '端口 8888'] },
+          { code: '/api/open/v1', title: '开放接口', icon: 'key', tags: ['AK/SK 签名', 'Webhook'] },
         ],
       },
       {
-        label: '应用层', sub: 'apps/api · FastAPI', columns: 2,
+        index: '03', label: '应用层', sub: 'apps/api', flow: 'SQL · Redis · S3', feature: true,
         cards: [
-          { title: '系统管理', code: 'sys', core: true, tags: ['用户与部门', '角色与菜单', '数据权限', '文件与存储', '导入导出'] },
-          { title: '认证', code: 'auth', core: true, tags: ['登录与验证码', 'JWT 与会话', '二次验证'] },
-          { title: '日志审计', code: 'log', core: true, tags: ['操作日志', '登录日志', '数据变更'] },
-          { title: '定时任务', code: 'task', core: true, tags: ['Celery worker', 'beat 调度', '执行记录'] },
-          { title: '系统监控', code: 'monitor', core: true, tags: ['在线用户', '服务器', 'Redis'] },
+          { code: 'sys', title: '系统管理', icon: 'settings', core: true, tags: ['用户 · 部门', '角色 · 菜单', '数据权限', '文件', '导入导出'] },
+          { code: 'auth', title: '认证', icon: 'lock', core: true, tags: ['登录', 'JWT 与会话', '二次验证'] },
+          { code: 'log', title: '日志审计', icon: 'file', core: true, tags: ['操作日志', '登录日志', '数据变更'] },
+          { code: 'task', title: '定时任务', icon: 'clock', core: true, tags: ['Celery', 'beat 调度', '执行记录'] },
+          { code: 'monitor', title: '系统监控', icon: 'activity', core: true, tags: ['在线用户', '服务器', 'Redis'] },
         ],
+        plugins: {
+          label: '插件 · 按需装卸',
+          items: [
+            { code: 'workflow', title: '审批流' },
+            { code: 'ai', title: 'AI 助手' },
+            { code: 'open', title: '能力开放' },
+            { code: 'notification', title: '消息通知' },
+            { code: 'notice', title: '通知公告' },
+            { code: 'oauth2', title: '第三方登录' },
+            { code: 'sms', title: '短信' },
+            { code: 'email', title: '邮件' },
+            { code: 'config', title: '参数配置' },
+            { code: 'dict', title: '数据字典' },
+          ],
+        },
         bars: [
           { label: '基础设施', tags: ['RBAC 鉴权', '数据范围', '变更审计', '缓存', '限流', 'Socket.IO', 'OpenTelemetry'] },
           { label: '公共层', tags: ['统一响应', '异常处理', '分页', '国际化', '雪花 ID'] },
         ],
-        plugins: {
-          label: '插件',
-          cards: [
-            { title: '审批流', code: 'workflow', tags: [] },
-            { title: 'AI 助手', code: 'ai', tags: [] },
-            { title: '能力开放', code: 'open', tags: [] },
-            { title: '消息通知', code: 'notification', tags: [] },
-            { title: '通知公告', code: 'notice', tags: [] },
-            { title: '第三方登录', code: 'oauth2', tags: [] },
-            { title: '短信 · 邮件', code: 'sms · email', tags: [] },
-            { title: '参数 · 字典', code: 'config · dict', tags: [] },
-          ],
-        },
       },
       {
-        label: '数据层', sub: '不对浏览器开放',
+        index: '04', label: '数据层', sub: '不对浏览器开放',
         cards: [
-          { title: '数据库', code: 'SQL', tags: ['PostgreSQL', 'SQL Server', 'MySQL'] },
-          { title: '缓存与队列', code: 'Redis', tags: ['缓存', '会话与令牌', 'Celery 队列'] },
-          { title: '文件存储', code: 'OpenDAL', tags: ['本地磁盘', 'S3 兼容'] },
+          { code: 'SQL', title: '数据库', icon: 'database', tags: ['PostgreSQL', 'SQL Server', 'MySQL'] },
+          { code: 'Redis', title: '缓存与队列', icon: 'layers', tags: ['缓存', '会话与令牌', 'Celery 队列'] },
+          { code: 'OpenDAL', title: '文件存储', icon: 'drive', tags: ['本地磁盘', 'S3 兼容'] },
         ],
       },
     ],
   },
   en: {
-    label: 'Layered system architecture',
-    caption: 'Requests flow top to bottom. Purple boxes are core modules; the dashed box holds pluggable plugins.',
-    rows: [
+    label: 'fastapi-react-admin layered system architecture',
+    brand: 'fastapi-react-admin',
+    title: 'System architecture',
+    legend: { core: 'Core module', plugin: 'Pluggable plugin', flow: 'Request flow' },
+    caption: 'One monorepo, four layers top to bottom; the frontend/backend contract is generated from the backend, and CI holds the dependency direction.',
+    url: URL,
+    layers: [
       {
-        label: 'Clients', sub: 'apps/*',
+        index: '01', label: 'Clients', sub: 'apps/*', flow: 'HTTPS · WebSocket',
         cards: [
-          { title: 'Web console', code: 'web', tags: ['Workspace', 'Multi-tab', 'React 19'] },
-          { title: 'Desktop', code: 'desktop', tags: ['Silent print', 'Local hardware', 'Auto-update'] },
-          { title: 'Mobile', code: 'mobile', tags: ['Approvals', 'Notifications', 'Expo'] },
-          { title: 'Shared', code: 'packages', tags: ['api contract', 'ui', 'platform', 'i18n'] },
+          { code: 'web', title: 'Web console', icon: 'monitor', tags: ['Workspace', 'Multi-tab', 'React 19'] },
+          { code: 'desktop', title: 'Desktop', icon: 'laptop', tags: ['Silent print', 'Local hardware', 'Auto-update'] },
+          { code: 'mobile', title: 'Mobile', icon: 'phone', tags: ['Approvals', 'Notifications', 'Expo'] },
+          { code: 'packages', title: 'Shared', icon: 'package', tags: ['api contract', 'ui', 'platform', 'i18n'] },
         ],
       },
       {
-        label: 'Gateway', sub: 'HTTP · WebSocket',
+        index: '02', label: 'Gateway', sub: 'Nginx · Vite', flow: 'ASGI · FastAPI',
         cards: [
-          { title: 'Production', code: 'Nginx', tags: ['Static assets', '/api proxy', '/ws push'] },
-          { title: 'Development', code: 'Vite', tags: ['Hot reload', ':8888'] },
-          { title: 'Open API', code: '/api/open/v1', tags: ['AK/SK signing', 'Webhooks'] },
+          { code: 'Nginx', title: 'Production', icon: 'server', tags: ['Static assets', '/api proxy', '/ws push'] },
+          { code: 'Vite', title: 'Development', icon: 'zap', tags: ['Hot reload', 'Port 8888'] },
+          { code: '/api/open/v1', title: 'Open API', icon: 'key', tags: ['AK/SK signing', 'Webhooks'] },
         ],
       },
       {
-        label: 'Application', sub: 'apps/api · FastAPI', columns: 2,
+        index: '03', label: 'Application', sub: 'apps/api', flow: 'SQL · Redis · S3', feature: true,
         cards: [
-          { title: 'System admin', code: 'sys', core: true, tags: ['Users and depts', 'Roles and menus', 'Data scopes', 'Files', 'Import/export'] },
-          { title: 'Auth', code: 'auth', core: true, tags: ['Sign-in and captcha', 'JWT and sessions', 'Two-factor'] },
-          { title: 'Logs and audit', code: 'log', core: true, tags: ['Operation log', 'Sign-in log', 'Data changes'] },
-          { title: 'Scheduler', code: 'task', core: true, tags: ['Celery worker', 'beat', 'Run history'] },
-          { title: 'Monitoring', code: 'monitor', core: true, tags: ['Online users', 'Server', 'Redis'] },
+          { code: 'sys', title: 'System admin', icon: 'settings', core: true, tags: ['Users · depts', 'Roles · menus', 'Data scopes', 'Files', 'Import/export'] },
+          { code: 'auth', title: 'Auth', icon: 'lock', core: true, tags: ['Sign-in', 'JWT and sessions', 'Two-factor'] },
+          { code: 'log', title: 'Logs and audit', icon: 'file', core: true, tags: ['Operations', 'Sign-ins', 'Data changes'] },
+          { code: 'task', title: 'Scheduler', icon: 'clock', core: true, tags: ['Celery', 'beat', 'Run history'] },
+          { code: 'monitor', title: 'Monitoring', icon: 'activity', core: true, tags: ['Online users', 'Server', 'Redis'] },
         ],
+        plugins: {
+          label: 'Plugins · install as needed',
+          items: [
+            { code: 'workflow', title: 'Approvals' },
+            { code: 'ai', title: 'AI assistant' },
+            { code: 'open', title: 'Open API' },
+            { code: 'notification', title: 'Notifications' },
+            { code: 'notice', title: 'Notices' },
+            { code: 'oauth2', title: 'Third-party login' },
+            { code: 'sms', title: 'SMS' },
+            { code: 'email', title: 'Email' },
+            { code: 'config', title: 'Config' },
+            { code: 'dict', title: 'Dictionary' },
+          ],
+        },
         bars: [
           { label: 'Infrastructure', tags: ['RBAC', 'Data scopes', 'Change audit', 'Cache', 'Rate limits', 'Socket.IO', 'OpenTelemetry'] },
           { label: 'Common', tags: ['Unified response', 'Errors', 'Pagination', 'i18n', 'Snowflake IDs'] },
         ],
-        plugins: {
-          label: 'Plugins',
-          cards: [
-            { title: 'Approvals', code: 'workflow', tags: [] },
-            { title: 'AI assistant', code: 'ai', tags: [] },
-            { title: 'Open API', code: 'open', tags: [] },
-            { title: 'Notifications', code: 'notification', tags: [] },
-            { title: 'Notices', code: 'notice', tags: [] },
-            { title: 'Third-party login', code: 'oauth2', tags: [] },
-            { title: 'SMS · email', code: 'sms · email', tags: [] },
-            { title: 'Config · dictionary', code: 'config · dict', tags: [] },
-          ],
-        },
       },
       {
-        label: 'Data', sub: 'Not exposed to browsers',
+        index: '04', label: 'Data', sub: 'Not exposed to browsers',
         cards: [
-          { title: 'Database', code: 'SQL', tags: ['PostgreSQL', 'SQL Server', 'MySQL'] },
-          { title: 'Cache and queue', code: 'Redis', tags: ['Cache', 'Sessions and tokens', 'Celery queue'] },
-          { title: 'File storage', code: 'OpenDAL', tags: ['Local disk', 'S3-compatible'] },
+          { code: 'SQL', title: 'Database', icon: 'database', tags: ['PostgreSQL', 'SQL Server', 'MySQL'] },
+          { code: 'Redis', title: 'Cache and queue', icon: 'layers', tags: ['Cache', 'Sessions and tokens', 'Celery queue'] },
+          { code: 'OpenDAL', title: 'File storage', icon: 'drive', tags: ['Local disk', 'S3-compatible'] },
         ],
       },
     ],
   },
-}
+} as const
