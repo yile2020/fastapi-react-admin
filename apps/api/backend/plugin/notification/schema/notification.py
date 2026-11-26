@@ -52,6 +52,16 @@ class GetNotificationDetail(NotificationSchemaBase):
     requires_ack: bool = Field(
         False, description='必须读者打开确认（如必须确认的公告）：不能在列表里标已读，「全部已读」也会跳过它'
     )
+    # 同上，service 回填。前端只认它决定摆不摆删除按钮，不要拿 `category` 去猜（#449）
+    deletable: bool = Field(
+        False, description='能否删除：只有点名发给我本人的才能删；公告和全员广播是全员共用的一行，不能删'
+    )
+
+
+class DeleteNotificationParam(SchemaBase):
+    """批量删除我的通知参数"""
+
+    pks: list[int] = Field(description='通知 ID 列表（不是发给我本人的会被跳过）', max_length=500)
 
 
 class GetNotificationUnreadDetail(SchemaBase):

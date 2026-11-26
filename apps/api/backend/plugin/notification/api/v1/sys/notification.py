@@ -10,6 +10,7 @@ from backend.common.security.rbac import DependsRBAC
 from backend.database.db import CurrentSession, CurrentSessionTransaction
 from backend.plugin.notification.audience import viewer_of
 from backend.plugin.notification.schema.notification import (
+    DeleteNotificationParam,
     GetNotificationDetail,
     GetNotificationUnreadDetail,
     SendNotificationParam,
@@ -75,6 +76,35 @@ async def mark_read(
     # 会被报成「操作失败」，而它本来就该什么都不做（AGENTS.md 里
     # 「update 返回的是写了几行，不是成败」同一个坑）
     await notification_service.mark_read(db=db, viewer=await viewer_of(db, request.user), pk=pk)
+    return response_base.success()
+
+
+# 🔴 删除只删「点名发给我本人」的通知（#449）。公告和全员广播是全员共用的一行，不在可删范围内。
+# 三条的声明顺序同 `read-all`：`/read` 必须排在 `/{pk}` 前面
+
+
+@router.delete('/read', summary='清空我的已读通知', dependencies=[DependsJwtAuth])
+async def delete_my_read_notifications(request: Request, db: CurrentSessionTransaction) -> ResponseSchemaModel[int]:
+    count = await notification_service.delete_read(db=db, viewer=await viewer_of(db, request.user))
+    return response_base.success(data=count)
+
+
+@router.delete('', summary='批量删除我的通知', dependencies=[DependsJwtAuth])
+async def delete_my_notifications(
+    request: Request, db: CurrentSessionTransaction, obj: DeleteNotificationParam
+) -> ResponseSchemaModel[int]:
+    # 返回实际删掉的条数：不是发给我本人的会被跳过，前端拿它提示「删除了 n 条」
+    count = await notification_service.delete_many(db=db, viewer=await viewer_of(db, request.user), pks=obj.pks)
+    return response_base.success(data=count)
+
+
+@router.delete('/{pk}', summary='删除我的通知', dependencies=[DependsJwtAuth])
+async def delete_my_notification(
+    request: Request,
+    db: CurrentSessionTransaction,
+    pk: Annotated[int, Path(description='通知 ID')],
+) -> ResponseModel:
+    await notification_service.delete(db=db, viewer=await viewer_of(db, request.user), pk=pk)
     return response_base.success()
 
 

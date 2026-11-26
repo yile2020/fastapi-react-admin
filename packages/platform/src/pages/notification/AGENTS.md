@@ -14,7 +14,7 @@
 |---|---|
 | `api.ts` | query key 工厂 + queryOptions + mutation。**铃铛和页面共用它** —— 任一处标记已读，另一处的红点立刻跟着变，不用互相通知 |
 | `bell.tsx` | 顶栏铃铛：红点 + 下拉预览（最近 8 条 / 三个页签 / 全部已读 / 查看全部） |
-| `index.tsx` + `columns.tsx` | 完整列表页（翻历史 / 筛已读未读 / 全部已读），标准三件套 |
+| `index.tsx` + `columns.tsx` | 完整列表页（翻历史 / 筛已读未读 / 全部已读 / 删除 · 批量删除 · 清空已读），标准三件套 |
 | `use-open.ts` | 「点开一条通知」的唯一实现（校验 `link` + 未读才标已读），两处共用 |
 | `shared.tsx` | 分类的图标/配色/标签 + 相对时间（「2 分钟前」） |
 
@@ -162,3 +162,17 @@
 ⚠️ 选人 / 部门 / 角色的下拉绑的是底座接口（`/sys/users` · `/sys/depts` · `/sys/roles/all`），各要 `sys:user:list` / `sys:dept:list` / `sys:role:list`。
 只有发公告权限、没有这三个码的人，下拉下面是一行「没有权限查看这些数据」（不是空列表，硬纪律 9）—— 这是**已知限制**；
 E2E 只用 admin 验过表单，「有公告权限、没这三个码」的角色没实测过。
+
+## 🔴 能不能删只认 `deletable`，选择也要在表上禁（#449）
+
+公告和全员广播是全员共用的一行，后端不让删（判据见后端 [`plugin/notification` 分册](../../../../../apps/api/backend/plugin/notification/AGENTS.md)）。
+前端只看接口回填的 `deletable`，**不要拿 `category` 去猜**：全员广播不止公告一种。
+
+勾选要禁两处：`buildSelectColumn` 的 `canSelect` 只禁那一格的复选框，**表头的「全选本页」照样会把公告勾进去**
+（`toggleAllPageRowsSelected` 不看单元格的 `disabled`），所以 `useTable` 上还要 `enableRowSelection: (row) => row.original.deletable`。
+批量删除时后端会静默跳过不能删的，漏了这一条不会报错，只是「已选 3 项」删完只少了 2 条。
+
+**实测证据**：`e2e/tests/notification.spec.ts` 的「消息中心删除一条」：一条我的 + 一条全员广播，点「全选本页」应是「已选 1 项」。
+把 `enableRowSelection` 注释掉重跑，收到的是 **「已选 2 项」**（2026-11-26，PostgreSQL）—— 单元格复选框照样是禁用的。
+同一条还断言了广播那一行没有 `notification-delete-*`，删掉自己那条之后红点从 2 变成 1。
+

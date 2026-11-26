@@ -1993,7 +1993,8 @@ export interface paths {
         get: operations["get_my_notifications_paginated_api_v1_sys_notifications_get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** 批量删除我的通知 */
+        delete: operations["delete_my_notifications_api_v1_sys_notifications_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2045,6 +2046,40 @@ export interface paths {
         put: operations["mark_read_api_v1_sys_notifications__pk__read_put"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sys/notifications/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** 清空我的已读通知 */
+        delete: operations["delete_my_read_notifications_api_v1_sys_notifications_read_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sys/notifications/{pk}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** 删除我的通知 */
+        delete: operations["delete_my_notification_api_v1_sys_notifications__pk__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5794,6 +5829,17 @@ export interface components {
             pks: number[];
         };
         /**
+         * DeleteNotificationParam
+         * @description 批量删除我的通知参数
+         */
+        DeleteNotificationParam: {
+            /**
+             * Pks
+             * @description 通知 ID 列表（不是发给我本人的会被跳过）
+             */
+            pks: number[];
+        };
+        /**
          * DeleteOperaLogParam
          * @description 删除操作日志参数
          */
@@ -8054,6 +8100,12 @@ export interface components {
              * @default false
              */
             requires_ack: boolean;
+            /**
+             * Deletable
+             * @description 能否删除：只有点名发给我本人的才能删；公告和全员广播是全员共用的一行，不能删
+             * @default false
+             */
+            deletable: boolean;
         };
         /**
          * GetNotificationUnreadDetail
@@ -13020,6 +13072,23 @@ export interface components {
             data: {
                 [key: string]: unknown;
             };
+        };
+        /** ResponseSchemaModel[int] */
+        ResponseSchemaModel_int_: {
+            /**
+             * Code
+             * @description 返回状态码
+             * @default 200
+             */
+            code: number;
+            /**
+             * Msg
+             * @description 返回信息
+             * @default 请求成功
+             */
+            msg: string;
+            /** Data */
+            data: number;
         };
         /** ResponseSchemaModel[list[GetBotDetail]] */
         ResponseSchemaModel_list_GetBotDetail__: {
@@ -20077,6 +20146,39 @@ export interface operations {
             };
         };
     };
+    delete_my_notifications_api_v1_sys_notifications_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteNotificationParam"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseSchemaModel_int_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_my_unread_count_api_v1_sys_notifications_unread_count_get: {
         parameters: {
             query?: never;
@@ -20118,6 +20220,58 @@ export interface operations {
         };
     };
     mark_read_api_v1_sys_notifications__pk__read_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 通知 ID */
+                pk: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_my_read_notifications_api_v1_sys_notifications_read_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseSchemaModel_int_"];
+                };
+            };
+        };
+    };
+    delete_my_notification_api_v1_sys_notifications__pk__delete: {
         parameters: {
             query?: never;
             header?: never;

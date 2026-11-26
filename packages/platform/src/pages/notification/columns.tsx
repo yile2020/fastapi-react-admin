@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { createColumnHelper } from '@tanstack/react-table'
-import { IconCheck, IconExternalLink, IconEyeCheck } from '@tabler/icons-react'
+import { IconCheck, IconExternalLink, IconEyeCheck, IconTrash } from '@tabler/icons-react'
 
 import { formatDateTime } from '@admin/i18n'
 import { ACTIONS_COLUMN_ID } from '@admin/ui/components/data-table'
@@ -10,6 +10,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@admin/ui/components/to
 import { cn } from '@admin/ui/lib/utils'
 
 import { TimeCell } from '../_shared/cells'
+import { buildSelectColumn } from '../_shared/select-column'
 import { StatusPill } from '../_shared/status'
 import { AttachmentCount } from '../notice/shared'
 import { noticeIdOf, type Notification } from './api'
@@ -27,10 +28,76 @@ export function buildColumns(
   onMarkRead: (n: Notification) => void,
   /** 公告那一行就地打开详情（写进本页 search 的 `notice`，见 `index.tsx`） */
   onOpenNotice: (noticeId: string) => void,
+  /** 删除一条（只有 `deletable` 的行会摆这个按钮，#449） */
+  onDelete: (n: Notification) => void,
   /** 普通函数不能自己调 hook —— 由组件传进来（i18n 分册第 5 条） */
   t: TFn
 ) {
+  /** 「已读 / 需确认 / 标记已读」那一格 */
+  function readCell(n: Notification) {
+    // 已读的行不摆一个禁用的按钮 —— 「标记已读」对它没有任何意义，
+    // 禁用态还会因为 `disabled:pointer-events-none` 连 tooltip 都打不开
+    // （[ui 分册](../../../../ui/AGENTS.md) 那条）。
+    // 阅读时间收进 tooltip 而不是直接摊在单元格里：它只有偶尔要看，
+    // 摊开会让这一列宽到把整张表推出视口。
+    if (n.read_time) {
+      return (
+        <Tooltip>
+          <TooltipTrigger
+            render={<span className="block w-7 text-center text-muted-foreground/60" />}
+          >
+            <IconCheck className="inline size-4" />
+          </TooltipTrigger>
+          <TooltipContent>
+            {t('已读于 {{at}}', { at: formatDateTime(n.read_time) })}
+          </TooltipContent>
+        </Tooltip>
+      )
+    }
+    // 🔴 必须确认的公告（#190）不给「标记已读」：那个 PUT 就是后端认的「我已阅读」，
+    // 在这里点一下等于替人确认了（弹窗不再弹、阅读统计里成了已读）。只能点标题打开抽屉、看完点「我已阅读」。
+    // 不摆禁用按钮的理由同上（禁用态打不开 tooltip），换成一个说明原因的标记
+    if (n.requires_ack) {
+      return (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span
+                className="block w-7 text-center text-amber-700 dark:text-amber-300"
+                data-testid={`notification-needs-ack-${n.id}`}
+              />
+            }
+          >
+            <IconEyeCheck className="inline size-4" />
+          </TooltipTrigger>
+          <TooltipContent>{t('必须确认：点标题打开，读完点「我已阅读」')}</TooltipContent>
+        </Tooltip>
+      )
+    }
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              aria-label={t('标记已读')}
+              data-testid={`notification-read-${n.id}`}
+              onClick={() => onMarkRead(n)}
+            />
+          }
+        >
+          <IconCheck className="size-4" />
+        </TooltipTrigger>
+        <TooltipContent>{t('标记已读')}</TooltipContent>
+      </Tooltip>
+    )
+  }
+
   return [
+    // 公告 / 全员广播不能删，也就不能勾（同 `index.tsx` 的 `enableRowSelection`）
+    buildSelectColumn(col, { canSelect: (n: Notification) => n.deletable }, t),
     col.accessor('title', {
       header: t('标题'),
       cell: ({ row, getValue }) => {
@@ -138,63 +205,34 @@ export function buildColumns(
       header: () => <span className="sr-only">{t('操作')}</span>,
       cell: ({ row }) => {
         const n = row.original
-        // 已读的行不摆一个禁用的按钮 —— 「标记已读」对它没有任何意义，
-        // 禁用态还会因为 `disabled:pointer-events-none` 连 tooltip 都打不开
-        // （[ui 分册](../../../../ui/AGENTS.md) 那条）。
-        // 阅读时间收进 tooltip 而不是直接摊在单元格里：它只有偶尔要看，
-        // 摊开会让这一列宽到把整张表推出视口。
-        if (n.read_time) {
-          return (
-            <Tooltip>
-              <TooltipTrigger
-                render={<span className="block w-7 text-center text-muted-foreground/60" />}
-              >
-                <IconCheck className="inline size-4" />
-              </TooltipTrigger>
-              <TooltipContent>
-                {t('已读于 {{at}}', { at: formatDateTime(n.read_time) })}
-              </TooltipContent>
-            </Tooltip>
-          )
-        }
-        // 🔴 必须确认的公告（#190）不给「标记已读」：那个 PUT 就是后端认的「我已阅读」，
-        // 在这里点一下等于替人确认了（弹窗不再弹、阅读统计里成了已读）。只能点标题打开抽屉、看完点「我已阅读」。
-        // 不摆禁用按钮的理由同上（禁用态打不开 tooltip），换成一个说明原因的标记
-        if (n.requires_ack) {
-          return (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <span
-                    className="block w-7 text-center text-amber-700 dark:text-amber-300"
-                    data-testid={`notification-needs-ack-${n.id}`}
-                  />
-                }
-              >
-                <IconEyeCheck className="inline size-4" />
-              </TooltipTrigger>
-              <TooltipContent>{t('必须确认：点标题打开，读完点「我已阅读」')}</TooltipContent>
-            </Tooltip>
-          )
-        }
+        // 「已读 / 需确认 / 标记已读」那一格 + 删除（只有发给我本人的才有，#449）。
+        // 不能删的行不摆禁用按钮（禁用态打不开 tooltip，同 `readCell`），留一格同宽的空位：
+        // 不留的话「已读」那个勾在可删 / 不可删的行之间左右跳，同一列对不齐
         return (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-7"
-                  aria-label={t('标记已读')}
-                  data-testid={`notification-read-${n.id}`}
-                  onClick={() => onMarkRead(n)}
-                />
-              }
-            >
-              <IconCheck className="size-4" />
-            </TooltipTrigger>
-            <TooltipContent>{t('标记已读')}</TooltipContent>
-          </Tooltip>
+          <div className="flex items-center justify-end gap-0.5">
+            {readCell(n)}
+            {n.deletable ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 text-muted-foreground hover:text-destructive"
+                      aria-label={t('删除')}
+                      data-testid={`notification-delete-${n.id}`}
+                      onClick={() => onDelete(n)}
+                    />
+                  }
+                >
+                  <IconTrash className="size-4" />
+                </TooltipTrigger>
+                <TooltipContent>{t('删除')}</TooltipContent>
+              </Tooltip>
+            ) : (
+              <span className="w-7" aria-hidden />
+            )}
+          </div>
         )
       },
     }),

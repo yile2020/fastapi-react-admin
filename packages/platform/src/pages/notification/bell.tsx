@@ -2,7 +2,7 @@ import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { IconBell, IconChevronRight } from '@tabler/icons-react'
+import { IconBell, IconChevronRight, IconX } from '@tabler/icons-react'
 
 import { Badge } from '@admin/ui/components/badge'
 import { Button, buttonVariants } from '@admin/ui/components/button'
@@ -10,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@admin/ui/components/po
 import { QueryError } from '@admin/ui/components/query-error'
 import { Skeleton } from '@admin/ui/components/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@admin/ui/components/tabs'
+import { toast } from '@admin/ui/components/toast'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@admin/ui/components/tooltip'
 import { cn } from '@admin/ui/lib/utils'
 
@@ -23,6 +24,7 @@ import {
   noticeIdOf,
   notificationsQuery,
   unreadCountQuery,
+  useDeleteNotification,
   useMarkAllNotificationsRead,
 } from './api'
 import { categoryMeta, relativeTime } from './shared'
@@ -65,6 +67,7 @@ export function NotificationBell() {
 
   const unread = useQuery(unreadCountQuery)
   const markAll = useMarkAllNotificationsRead()
+  const del = useDeleteNotification()
   const { linkOf, readIfUnread } = useNotificationOpen()
 
   // 服务端推来「有新的」时重新拉未读数和列表。
@@ -274,7 +277,7 @@ export function NotificationBell() {
                     </>
                   )
                   return (
-                    <li key={n.id}>
+                    <li key={n.id} className="group relative">
                       {to ? (
                         <Link
                           to={to.to as never}
@@ -297,6 +300,27 @@ export function NotificationBell() {
                         >
                           {body}
                         </button>
+                      )}
+                      {/* 删除（#449）：只有发给我本人的才有，悬停 / 键盘聚焦时出现。不弹二次确认 ——
+                          下拉里一条一条清理是高频小动作，确认框会把它变成三次点击；消息中心的批量 / 清空才确认。
+                          和整行的链接 / 按钮是兄弟不是子孙：`<a>` / `<button>` 里不能再套按钮 */}
+                      {n.deletable && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="absolute end-2 top-2 size-6 bg-popover text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive focus-visible:opacity-100"
+                          aria-label={t('删除')}
+                          title={t('删除')}
+                          disabled={del.isPending && del.variables === n.id}
+                          data-testid="notification-item-delete"
+                          onClick={() =>
+                            del.mutate(n.id, {
+                              onError: (e) => toast.error(e instanceof Error ? e.message : t('删除失败')),
+                            })
+                          }
+                        >
+                          <IconX className="size-3.5" />
+                        </Button>
                       )}
                     </li>
                   )

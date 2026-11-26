@@ -36,6 +36,11 @@ export type Notification = {
    * 只能在读者抽屉 / 弹窗里点「我已阅读」。查询时现算，不是数据库列
    */
   requires_ack: boolean
+  /**
+   * 能不能删（#449）：只有点名发给我本人的能删。公告和全员广播是**全员共用的一行**，删了就是所有人一起看不到，
+   * 后端不让删。前端只认这个字段摆不摆删除按钮 / 能不能勾选，**不要拿 `category` 去猜**（全员广播不止公告一种）
+   */
+  deletable: boolean
 }
 
 /**
@@ -166,6 +171,33 @@ export function useMarkAllNotificationsRead() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: () => api.PUT<null>('/api/v1/sys/notifications/read-all'),
+    onSuccess: () => invalidateInbox(qc),
+  })
+}
+
+/** 删除一条我的通知（#449）。只能删 `deletable` 的；别的后端一律 404 */
+export function useDeleteNotification() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.DELETE<null>(`/api/v1/sys/notifications/${id}`),
+    onSuccess: () => invalidateInbox(qc),
+  })
+}
+
+/** 批量删除。不是发给我本人的后端静默跳过，返回**实际删掉的条数** */
+export function useDeleteNotifications() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (pks: string[]) => api.DELETE<number>('/api/v1/sys/notifications', { body: { pks } }),
+    onSuccess: () => invalidateInbox(qc),
+  })
+}
+
+/** 清空已读：删掉发给我本人、且已读的全部通知（公告和全员广播不动），返回删掉的条数 */
+export function useDeleteReadNotifications() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.DELETE<number>('/api/v1/sys/notifications/read'),
     onSuccess: () => invalidateInbox(qc),
   })
 }

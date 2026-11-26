@@ -291,3 +291,122 @@ def test_hidden_notice_does_not_notify(client: TestClient, token_headers: dict[s
         assert _find(_list(client, token_headers, category=1), title) is None
     finally:
         client.request('DELETE', NOTICES, headers=token_headers, json={'pks': [notice_id]})
+
+
+# ─── 删除（#449）：只删点名发给我本人的 ─────────────────────────────────────────
+
+
+def _rows_by_title(title: str) -> list[tuple[int, int | None, int]]:
+    """(id, recipient_id, deleted)：直接看库，接口只能看见自己那一份"""
+
+    async def _rows(db: AsyncSession) -> list[tuple[int, int | None, int]]:
+        stmt = select(Notification.id, Notification.recipient_id, Notification.deleted).where(
+            Notification.title == title
+        )
+        return [(r[0], r[1], r[2]) for r in (await db.execute(stmt)).all()]
+
+    return _run_on_test_db(_rows)
+
+
+def _my_id(client: TestClient, headers: dict[str, str]) -> str:
+    """当前登录用户的 ID（字符串，硬纪律 6）"""
+    res = client.get('/sys/users/me', headers=headers)
+    assert res.status_code == 200, res.text
+    return str(res.json()['data']['id'])
+
+
+def test_list_marks_only_targeted_as_deletable(
+    client: TestClient, token_headers: dict[str, str], cleanup: list[str]
+) -> None:
+    """列表的 `deletable`：点名给我的 true，广播 false —— 前端只认它摆不摆删除按钮"""
+    me = _my_id(client, token_headers)
+    _send(client, token_headers, cleanup, title='pytest 可删 定向', recipient_ids=[me])
+    _send(client, token_headers, cleanup, title='pytest 可删 广播')
+    items = _list(client, token_headers)
+    targeted = _find(items, 'pytest 可删 定向')
+    broadcast = _find(items, 'pytest 可删 广播')
+    assert targeted is not None
+    assert broadcast is not None
+    assert targeted['deletable'] is True
+    assert broadcast['deletable'] is False
+
+
+def test_delete_own_targeted_leaves_others_copy(
+    client: TestClient, token_headers: dict[str, str], cleanup: list[str]
+) -> None:
+    """🔴 同一次发给我和别人：定向发送是每人一行，我删我那行，别人那行原样在"""
+    me = _my_id(client, token_headers)
+    other_id = '2049946297615646720'
+    title = 'pytest 删除 不影响别人'
+    _send(client, token_headers, cleanup, title=title, recipient_ids=[me, other_id])
+    item = _find(_list(client, token_headers), title)
+    assert item is not None
+
+    before = _unread_total(client, token_headers)
+    res = client.delete(f'{NOTIFICATIONS}/{item["id"]}', headers=token_headers)
+    assert res.status_code == 200, res.text
+
+    assert _find(_list(client, token_headers), title) is None
+    # 删的是一条未读：红点跟着减
+    assert _unread_total(client, token_headers) == before - 1
+    rows = {str(rid): deleted for _, rid, deleted in _rows_by_title(title)}
+    assert rows[me] != 0
+    assert rows[other_id] == 0
+
+
+def test_delete_broadcast_or_others_is_404_and_untouched(
+    client: TestClient, token_headers: dict[str, str], cleanup: list[str]
+) -> None:
+    """🔴 广播（公告 / 全员发）和发给别人的：一律 404，库里不动
+
+    广播是全员共用的一行，删掉就是所有人一起看不到；发给别人的 404 而不是 403，不泄漏「这条存在」
+    """
+    _send(client, token_headers, cleanup, title='pytest 删除 广播')
+    _send(client, token_headers, cleanup, title='pytest 删除 别人的', recipient_ids=['2049946297615646720'])
+    for title in ('pytest 删除 广播', 'pytest 删除 别人的'):
+        [(pk, _, _)] = _rows_by_title(title)
+        res = client.delete(f'{NOTIFICATIONS}/{pk}', headers=token_headers)
+        assert res.status_code == 404, res.text
+        assert _rows_by_title(title)[0][2] == 0
+
+
+def test_batch_delete_skips_what_is_not_mine(
+    client: TestClient, token_headers: dict[str, str], cleanup: list[str]
+) -> None:
+    """批量里混进广播：只删我本人的那几条，返回实际删除数，广播不动、整批不失败"""
+    me = _my_id(client, token_headers)
+    _send(client, token_headers, cleanup, title='pytest 批量 A', recipient_ids=[me])
+    _send(client, token_headers, cleanup, title='pytest 批量 B', recipient_ids=[me])
+    _send(client, token_headers, cleanup, title='pytest 批量 广播')
+    pks = [str(_rows_by_title(t)[0][0]) for t in ('pytest 批量 A', 'pytest 批量 B', 'pytest 批量 广播')]
+
+    res = client.request('DELETE', NOTIFICATIONS, headers=token_headers, json={'pks': pks})
+    assert res.status_code == 200, res.text
+    assert res.json()['data'] == 2
+    items = _list(client, token_headers)
+    assert _find(items, 'pytest 批量 A') is None
+    assert _find(items, 'pytest 批量 B') is None
+    assert _find(items, 'pytest 批量 广播') is not None
+
+
+def test_delete_read_only_clears_my_read_targeted(
+    client: TestClient, token_headers: dict[str, str], cleanup: list[str]
+) -> None:
+    """清空已读：只删「点名给我 + 已读」的；未读的、已读的广播都留着"""
+    me = _my_id(client, token_headers)
+    _send(client, token_headers, cleanup, title='pytest 清空 已读', recipient_ids=[me])
+    _send(client, token_headers, cleanup, title='pytest 清空 未读', recipient_ids=[me])
+    _send(client, token_headers, cleanup, title='pytest 清空 已读广播')
+    items = _list(client, token_headers)
+    for title in ('pytest 清空 已读', 'pytest 清空 已读广播'):
+        item = _find(items, title)
+        assert item is not None
+        assert client.put(f'{NOTIFICATIONS}/{item["id"]}/read', headers=token_headers).status_code == 200
+
+    res = client.delete(f'{NOTIFICATIONS}/read', headers=token_headers)
+    assert res.status_code == 200, res.text
+    assert res.json()['data'] >= 1
+    items = _list(client, token_headers)
+    assert _find(items, 'pytest 清空 已读') is None
+    assert _find(items, 'pytest 清空 未读') is not None
+    assert _find(items, 'pytest 清空 已读广播') is not None

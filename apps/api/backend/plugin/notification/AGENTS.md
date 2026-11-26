@@ -236,3 +236,19 @@ SQL Server 上新表不是 IDENTITY；autogenerate 和迁移后的库比对没�
 ⚠️ **复核自己查不出来时照快照发**（`_recheck_recipient` 记 warning，同群机器人限流「数不出来就照发」）：第一版复核在 `try` 外面，
 查库一抛就冲出 `deliver_pending`，这一行停在 sending、被归成「结果未知」再也不发，同批后面的也不发。
 `test_recheck_failing_still_sends_to_the_snapshot`：把兜底改成只接 `ZeroDivisionError` → 红。
+
+## 🔴 删除只删「点名发给我本人」的那一行：按 `recipient_id` 判，不按 `category`（#449）
+
+**会怎么坏**：如果按「分类是不是公告」决定能不能删，全员广播里除了公告还有每日问候、手动发送时留空接收人的消息，
+它们落库也是 `recipient_id IS NULL`、**全员共用的一行**。按分类放开的话这些都能删，一删就是**所有人一起看不到**，
+而接口照样返回 200。
+
+**规则**：能删 = `recipient_id = 我 AND deleted = 0`（`crud_notification.get_own_ids`）。**不要复用 `visible_to`**：
+它包含广播那一半。定向发送是按收件人每人一行（`notification_service.send` 里 fan-out），删自己那行不影响别人。
+删除走的是现成的逻辑删除列（`deleted` / `deleted_time`），收件箱的每条查询本来就过滤 `deleted == 0`，所以不用新建表、不用迁移；
+已读标记一起删掉（同 `retract_by_source`）。单条删不掉（广播 / 别人的 / 不存在）一律 404，不区分；批量删时静默跳过。
+列表上的 `deletable` 由 service 用同一个判据回填，前端只认这个字段。
+
+**实测证据**：`tests/test_notification.py` 的 `test_delete_broadcast_or_others_is_404_and_untouched`（广播和别人的 → 404、库里 `deleted` 仍是 0）、
+`test_delete_own_targeted_leaves_others_copy`（同一次发给我和 test 账号，我删了之后 test 那一行 `deleted == 0`），
+`test_batch_delete_skips_what_is_not_mine`（三条里混一条广播 → 返回 2）。
