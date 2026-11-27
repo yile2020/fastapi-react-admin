@@ -11,7 +11,7 @@ export default defineConfig([
   // 磁盘上出现 —— 不忽略的话本地 `pnpm lint` 会去 lint 一份没做过转译的 pdfjs
   // worker，报一堆 `es/no-*` 兼容性规则错误。CI 是全新 checkout、这个目录本来就
   // 不存在，所以这条只影响本地体验，不影响 CI 结果。
-  globalIgnores(['dist', 'public/file-viewer/vendor']),
+  globalIgnores(['dist', 'dist-e2e', 'public/file-viewer/vendor']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

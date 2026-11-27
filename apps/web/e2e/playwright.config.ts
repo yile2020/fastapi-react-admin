@@ -11,6 +11,54 @@ const WEB_PORT = 1126
 const API_PORT = 8001
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..")
 
+/**
+ * CI 把整套用例拆成几片、各在一台 runner 上跑（`.github/workflows/ci.yml` 的 `test-e2e`），
+ * 每片设 `E2E_SHARD=<第几片>/<共几片>`。本地不设，照旧整套跑、出 HTML 报告。
+ *
+ * 写坏了要当场报错：`shard` 给 `undefined` 时 Playwright 会**整套都跑**，
+ * 四片各跑一遍全量照样全绿，只是白等四倍时间，看不出来。
+ */
+function parseShard(raw: string | undefined) {
+  if (!raw) return undefined
+  const m = /^(\d+)\/(\d+)$/.exec(raw)
+  const current = Number(m?.[1])
+  const total = Number(m?.[2])
+  if (!m || current < 1 || current > total) {
+    throw new Error(`E2E_SHARD 要写成「第几片/共几片」（比如 2/4），拿到的是 ${JSON.stringify(raw)}`)
+  }
+  return { current, total }
+}
+
+const SHARD = parseShard(process.env.E2E_SHARD)
+
+/**
+ * CI 里前端用**构建产物**（`vite build` + `vite preview`），本地照旧用开发服务器。
+ *
+ * 每条用例都是一个全新的浏览器上下文，没有 HTTP 缓存。开发服务器按模块一个个下发，
+ * 登录页冷加载一次是 633 个请求、1436 毫秒；构建产物是 8 个请求、350 毫秒
+ * （2026-11-27 本机实测，各 8 次取中位数，16 核空闲）。CI 的 runner 只有 4 核，还要分给
+ * SQL Server、uvicorn 和两个 Chromium。构建本身 6 秒。
+ *
+ * 本地默认不走这条路：写用例时要热更新，也要 `reuseExistingServer`。
+ * 想在本地照 CI 的样子跑一遍：`E2E_PREVIEW=1 pnpm e2e`。
+ *
+ * 🔴 构建写到 `apps/web/dist-e2e`，**不是** `dist`：这份产物带 `window.__e2e`（拿得到内存里的 access token，
+ * 见 `src/main.tsx`），而 `apps/desktop/electron-builder.yml` 是直接从 `../web/dist` 抓渲染层的，
+ * 桌面端的 `package` 又不会重建 web —— 写进 `dist` 的话，本地跑一遍 E2E 再打桌面包，安装包里就带着这个钩子。
+ *
+ * 🔴 `BUILD_ID` 钉成 `"dev"`：开发期编译进去的 buildId 就是这个值，`new-version.spec.ts`
+ * 靠它造「服务端没换版」。不钉的话每次构建是 `<sha>-<时间戳>`，那条用例会被轮询抢先弹出卡片。
+ */
+const PREVIEW = !!process.env.CI || process.env.E2E_PREVIEW === "1"
+const E2E_OUT_DIR = "dist-e2e"
+const WEB_ENV = {
+  // api-client 的 API_BASE 和 /uploads 代理目标都读这个变量，早就是可覆盖的
+  VITE_API_BASE: `http://127.0.0.1:${API_PORT}`,
+  // 在 `window.__e2e` 上挂应用自己的 api 客户端和 token 仓库（见 `apps/web/src/main.tsx`）。
+  // 两种起法都设：用例只有一条取法，不分开发服务器还是构建产物
+  VITE_E2E_HOOKS: "1",
+}
+
 export default defineConfig({
   testDir: "./tests",
   fullyParallel: true,
@@ -23,7 +71,10 @@ export default defineConfig({
   // 不是 CI 独有：`pnpm exec playwright show-report` 能直接在浏览器里点开每条用例的
   // 截图/trace，比在终端里翻堆栈方便得多。`open: "never"` 只是不自动弹浏览器，
   // 报告文件（`apps/web/playwright-report/`）照样生成。
-  reporter: [["list"], ["html", { open: "never" }]],
+  //
+  // 分片时换成 blob：每片只有一部分用例，各出一份 HTML 没法看，CI 把几片的 blob 合成一份。
+  reporter: SHARD ? [["list"], ["blob"]] : [["list"], ["html", { open: "never" }]],
+  shard: SHARD,
 
   // 一次性环境准备：把 fba_test 里的登录验证码关掉。不放进每条测试的 fixture——
   // 它是环境准备，不是测试本身的一部分。见 global-setup.ts 头注释。
@@ -58,17 +109,23 @@ export default defineConfig({
       stderr: "pipe",
     },
     {
-      command: "pnpm --filter web dev",
+      // 构建那一步直接调 `vite build`，不走 `pnpm --filter web build`：后者前面还有一遍 `tsc -b`，
+      // 类型检查在 static job 里已经有了。`/uploads` 代理不用另配，`preview.proxy` 默认沿用 `server.proxy`。
+      command: PREVIEW
+        ? `pnpm --filter web exec vite build --outDir ${E2E_OUT_DIR} && pnpm --filter web exec vite preview --outDir ${E2E_OUT_DIR} --host 127.0.0.1 --port ${WEB_PORT} --strictPort`
+        : "pnpm --filter web dev",
       cwd: REPO_ROOT,
-      env: {
-        // vite.config.ts 只在这个变量存在时才偏离固定的 8888（见那边的注释）
-        E2E_WEB_PORT: String(WEB_PORT),
-        // api-client 的 API_BASE 和 /uploads 代理目标都读这个变量，早就是可覆盖的
-        VITE_API_BASE: `http://127.0.0.1:${API_PORT}`,
-      },
+      env: PREVIEW
+        ? { ...WEB_ENV, BUILD_ID: "dev" }
+        : {
+            ...WEB_ENV,
+            // vite.config.ts 只在这个变量存在时才偏离固定的 8888（见那边的注释）
+            E2E_WEB_PORT: String(WEB_PORT),
+          },
       url: `http://127.0.0.1:${WEB_PORT}`,
       reuseExistingServer: !process.env.CI,
-      timeout: 60_000,
+      // 走构建产物时这里面含一次 `vite build`
+      timeout: PREVIEW ? 180_000 : 60_000,
       stdout: "pipe",
       stderr: "pipe",
     },

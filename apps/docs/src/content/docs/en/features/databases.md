@@ -12,7 +12,7 @@ The backend runs on PostgreSQL, SQL Server or MySQL with the same models, the sa
 | | Driver | Local setup | Verification |
 |---|---|---|---|
 | **PostgreSQL** (default) | `asyncpg` | `docker compose -f docker-compose.dev.yml up -d` (PostgreSQL 16) | CI job `pytest · PostgreSQL`: full backend suite on every run, plus a migration step on an empty database |
-| **SQL Server** | `aioodbc` + Microsoft ODBC Driver 18 | `--profile sqlserver` in the same compose file (SQL Server 2022) | CI job `pytest · SQL Server`: full backend suite; CI job `playwright · E2E`: the browser tests run against a SQL Server backend |
+| **SQL Server** | `aioodbc` + Microsoft ODBC Driver 18 | `--profile sqlserver` in the same compose file (SQL Server 2022) | CI job `pytest · SQL Server`: full backend suite (skipped on pull requests that only touch frontend or docs files; `pytest · PostgreSQL` still runs there); CI job `playwright · E2E`: the browser tests run against a SQL Server backend |
 | **MySQL** | `asyncmy` | bring your own MySQL 8.x | **Not in CI.** Run by hand on 2026-10-31 (MySQL 8.4.13): 1,451 tests, 1,433 passed, 18 skipped, 0 failed |
 
 That MySQL run also covered the upgrade path. A database created by v0.0.1's `fba init` was upgraded with `alembic upgrade head` through the whole chain, ending with 56 tables and no structural differences from the models (one comment differed).

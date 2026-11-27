@@ -87,7 +87,7 @@ main（受保护，只能通过 PR 合入）
 ```
 
 - 分支名前缀对齐 commit 前缀（Conventional Commits 风格，`feat:`/`fix:`/`docs:`/`chore:`）
-- 合并前必须：5 个必需检查全绿（见下；`pytest · PostgreSQL` 也会跑，但不在必需检查里）。**不要求人工 review**——单人维护，
+- 合并前必须：6 个必需检查全绿（见下，两条 pytest 都在里面）。**不要求人工 review**——单人维护，
   要求别人批准会直接把自己锁死；门槛全靠 CI
 - 三种合并方式（merge / squash / rebase）都开着，没有强制线性历史，看改动大小自己选
 
@@ -97,7 +97,7 @@ main（受保护，只能通过 PR 合入）
 
 | 在哪 | 什么时候看得到 |
 |---|---|
-| PR 上的 checks | 提 PR 之后；红了合不进去（5 个必需检查） |
+| PR 上的 checks | 提 PR 之后；红了合不进去（6 个必需检查） |
 | README 顶部的 CI 徽章 | 任何时候 —— 「main 此刻是红还是绿」的常驻答案 |
 | GitHub 的 Actions 失败通知 | 自己触发的 run 失败时（邮件 / 站内） |
 
@@ -141,7 +141,8 @@ tag 推上去之后：
 
 这几道门必须全绿，CI 的 job 都跑（`typecheck · build · i18n` / `eslint` /
 `ruff` / `pytest · SQL Server` / `pytest · PostgreSQL` / `playwright · E2E`，数据库用
-GitHub Actions 的 service containers 自建，不是「本地才跑」）：
+GitHub Actions 的 service containers 自建，不是「本地才跑」；改动没碰后端的 PR 会跳过
+`pytest · SQL Server`，跳过算通过）：
 
 ```bash
 pnpm typecheck --force          # 全仓库 tsc（不带 --force 会命中 turbo 缓存，见 CLAUDE.md 硬纪律 12）
