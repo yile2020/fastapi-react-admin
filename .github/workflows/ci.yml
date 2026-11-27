@@ -148,11 +148,11 @@ jobs:
         working-directory: apps/api
         run: uvx ruff@0.16.4 check --config pyproject.toml --no-fix backend/
 
-  # 纯文档 PR 不跑 E2E 和两个 pytest：它们合起来要 25 分钟左右，而文档改动碰不到
+  # 纯文档 PR 不跑 E2E 和两个 pytest：它们要十分钟上下，而文档改动碰不到
   # 它们测的任何东西。文档自己的闸门（`pnpm build` 里的 Astro 构建 + 源码链接检查、
   # `ctx:check`）在上面的 static job 里，照跑。
   #
-  # 🔴 **用 job 级的 `if` 跳，不要用 workflow 级的 `paths-ignore`。** 下面三个 job 里
+  # 🔴 **用 job 级的 `if` 跳，不要用 workflow 级的 `paths-ignore`。** 下面几个 job 里
   # 有两个是 ruleset 要求的检查：job 因为 `if` 被跳过时会上报 skipped，ruleset 把它
   # 当作通过；整个 workflow 被 `paths` 过滤掉的话这些检查**根本不上报**，PR 永远卡在
   # 「等待必需的检查」上（和 static job 改名那次同一个症状）。
@@ -534,16 +534,32 @@ jobs:
           git diff --exit-code packages/api/src/schema.d.ts \
             || { echo "::error::schema.d.ts 和后端对不上：跑 pnpm --filter @admin/api gen:api 并提交"; exit 1; }
 
+  # E2E 拆成 4 个分片并行跑，每片是一台独立的 runner，各带自己的 SQL Server 和 Redis。
+  #
+  # 为什么拆：不拆时 292 条用例、2 个 worker，`pnpm e2e` 那一步要 20–28 分钟（2026-11-27 实测两次：
+  # 用例累计 35.6 / 49.8 分钟，除以 2 个 worker），而别的 job 都在 9 分钟以内 —— PR 等多久全看这一个。
+  # 上限一路从 15 放到 20、30、40 分钟（#171 / #445），每次都是撞上了才放。
+  # 不靠加 worker：4 核的 runner 已经被 SQL Server、uvicorn、Vite 和两个 Chromium 占满
+  # （同一套用例两次运行差 40%），而且 SQL Server 上并行建 / 删用户会死锁（见 apps/web/e2e/AGENTS.md）。
+  #
+  # 🔴 **这个 job 的 name 不是必需检查，下面 `e2e-report` 的才是。** ruleset 按字面要的是
+  # `playwright · E2E`，矩阵 job 上报的是带后缀的四个名字，所以那个名字留给汇总 job。
+  #
+  # 🔴 改分片数要改两处：下面的 `shard` 列表和「E2E test」那一步里 `E2E_SHARD` 的分母。
+  # 只改列表不改分母，多出来的那一片会报分片号超出总数；只改分母不改列表，**有一部分用例谁都不跑而全绿**。
   test-e2e:
-    name: playwright · E2E
+    name: playwright · E2E (${{ matrix.shard }}/4)
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
-    # 整套约 13 分钟（2 个 worker）；login-phone.spec.ts 要等一次 60 秒的短信冷却。15 分钟撞过一次上限（#171），
-    # 症状是 job 显示 cancelled 而列表报告里 121 条全过。2026-11-09 main 上已经要 19.5 分钟（20 分钟的上限只剩半分钟），放到 30。
-    # 2026-11-24 最近几次是 21 / 22 / 22 / 25 / 29 分钟，#445 那次撞上 30 分钟上限（job 显示 cancelled，
-    # 步骤日志里 `pnpm e2e` 之后 29 分钟一行输出都没有，不知道卡在哪），放到 40 留余量
-    timeout-minutes: 40
+    strategy:
+      # 一片红了别的照跑完：报告要完整，而且「只有这一片红」本身就是定位信息
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    # 一片的测试部分预计 5–7 分钟，加 1.5 分钟准备环境；login-phone.spec.ts 要等一次 60 秒的短信冷却。
+    # 上限留到 20：超时的症状是 job 显示 cancelled 而列表报告里全过（#171），看不出卡在哪
+    timeout-minutes: 20
 
     env:
       DATABASE_TYPE: sqlserver
@@ -618,14 +634,69 @@ jobs:
       # 这个进程会连到建库步骤里那个只 CREATE DATABASE、从没灌过种子的开发库 fba：
       # dev 模式启动会自动 create_all 建表，所以连接看起来正常，就是没有 admin
       # 账号，登录 403，`global-setup.ts` 报的就是这个。
+      # `E2E_SHARD` 由 `apps/web/e2e/playwright.config.ts` 读：设了就只跑这一片，报告换成 blob
+      # （一片一个 zip，由下面的 `e2e-report` 合成一份 HTML）。走环境变量而不是 `--shard` 参数，
+      # 是因为这里跑的是 `pnpm e2e`（turbo，硬纪律 13）；变量要过 turbo，见 turbo.json 的 `passThroughEnv`。
       - name: E2E test
         env:
           DATABASE_SCHEMA: fba_test
+          E2E_SHARD: ${{ matrix.shard }}/4
         run: pnpm e2e
+
+      - name: Upload blob report
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: blob-report-${{ matrix.shard }}
+          path: apps/web/blob-report/
+          # 只是合并用的中间产物，合好的 HTML 报告另存 7 天
+          retention-days: 1
+          # 只重跑这一片时同一个 run_id 会再传一份同名 artifact，默认不覆盖
+          overwrite: true
+
+  # 四个分片的汇总：把各片的 blob 报告合成一份 HTML（Pages 上 /e2e/ 那份），并且代表整套 E2E 的红绿。
+  #
+  # 🔴 **这个 name 是 ruleset 按字面引用的必需检查，不要改**（和 static job 同一个道理）。
+  #
+  # 🔴 **`if` 用 `always()`，不能照别的 job 写 `!cancelled()`。** 被跳过的 job 上报 skipped，
+  # ruleset 把 skipped 当通过。写 `!cancelled()` 的话，有人在分片跑到一半时手动取消这次运行，
+  # 这个 job 就是 skipped —— 一套没跑完的 E2E 在必需检查上显示通过。`always()` 让它照样起来，
+  # 由最后一步按分片的结果判红。纯文档 PR 照旧整个跳过（那是有意的通过）。
+  e2e-report:
+    name: playwright · E2E
+    needs: [changes, test-e2e]
+    if: ${{ always() && needs.changes.outputs.docs_only != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # 合并报告只要 `@playwright/test` 这个包，不用浏览器
+      - run: pnpm install --frozen-lockfile --filter web
+
+      # 分片在装环境阶段就挂了的话没有 blob 可下：不让这一步红，红绿由最后一步说了算
+      - name: Download blob reports
+        id: blobs
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          pattern: blob-report-*
+          path: ${{ runner.temp }}/blob-reports
+          merge-multiple: true
+
+      - name: Merge into HTML report
+        if: steps.blobs.outcome == 'success'
+        working-directory: apps/web
+        run: pnpm exec playwright merge-reports --reporter html "$RUNNER_TEMP/blob-reports"
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
+        if: steps.blobs.outcome == 'success'
         with:
           name: playwright-report
           path: apps/web/playwright-report/
@@ -634,6 +705,13 @@ jobs:
           # 会撞出 2 份同名（download-artifact 这次凑巧没炸，但 pages 那边
           # 同类的 github-pages 重复已经实测炸过一次），显式覆盖更稳。
           overwrite: true
+
+      # `needs.test-e2e.result` 是四片合起来的结果：全过才是 success，有一片失败 / 取消 / 没跑都不是
+      - name: 四个分片都要通过
+        if: needs.test-e2e.result != 'success'
+        run: |
+          echo "::error::E2E 分片的结果是 ${{ needs.test-e2e.result }}，看上面名字带 (n/4) 的那几个 job"
+          exit 1
 
   # 把文档站（`apps/docs`）和 E2E 报告一起发到 GitHub Pages：文档站在根路径，
   # E2E 报告在 `/e2e/`，给它一个每次跑完都刷新、不用手动下载 zip 的固定链接。
@@ -650,7 +728,8 @@ jobs:
   # 这个 job 照跑，文档站还是会发。
   pages:
     name: 发布文档站和 E2E 报告到 Pages
-    needs: [test-e2e]
+    # 报告是 `e2e-report` 合出来的那一份，所以等的是它，不是分片
+    needs: [e2e-report]
     if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     permissions:
@@ -778,7 +857,7 @@ jobs:
   build-images:
     name: 构建镜像并推到 GHCR
     # test-nginx 也要在（#374）：反代那层的回归测试红了，镜像照样推 latest 就等于没测
-    needs: [static, test-nginx, lint-frontend, lint-backend, test-backend, test-backend-postgres, test-e2e]
+    needs: [static, test-nginx, lint-frontend, lint-backend, test-backend, test-backend-postgres, e2e-report]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:

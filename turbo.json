@@ -40,7 +40,10 @@
       "cache": false
     },
     "e2e": {
-      "cache": false
+      "cache": false,
+      "passThroughEnv": [
+        "E2E_SHARD"
+      ]
     },
     "@admin/desktop#build": {
       "dependsOn": [
