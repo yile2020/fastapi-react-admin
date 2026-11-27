@@ -26,3 +26,9 @@ SQLAlchemy 的 aioodbc 适配层（`AsyncAdapt_aioodbc_connection.add_output_con
   稳定报出同一句 -155；套上这个函数之后同样条件下读出带时区的 datetime
 - `backend/tests/test_mssql_datetimeoffset.py` 2 条（把方言那一步换成永不完成的 future，竞态变成必然）：
   修前两条都红在 -155，修后都过；还核对了微秒截断和负偏移（`-03:30`）的分钟
+
+## 🔴 SQL Server：并发写同一张关联表报 1205 死锁（#455）
+
+RCSI 关着时读也加共享锁，一条要扫全表的查询会排在别的事务**没提交**的行后面；两个事务都这样就成环。
+关联表按父列删 / 查要有索引，按一批键取行在 mssql 上要 `FORCESEEK`（小表上优化器宁可扫描）。
+详见 [`app/admin` 分册](../app/admin/AGENTS.md)「删用户 × 用户导入提交互相死锁」。
