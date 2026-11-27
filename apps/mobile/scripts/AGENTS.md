@@ -122,8 +122,19 @@ base64 -w0 fra-release.jks > fra-release.jks.b64     # macOS：base64 -i fra-rel
 国内 / 内网要自己托管时：把 Release 里的 APK 和 `latest-android.json` **两个文件原样**放到同一个目录，变量指向那个清单 ——
 清单里 `apk` 写的是文件名，App 按清单所在目录解析。
 
-⚠️ **没验的**：正式证书重签这一步只在本机用临时证书跑过同样的 `apksigner` 命令（见 PR），真 tag 还没打过；
-装到手机上「旧版 → 提示 → 下载 → 覆盖安装」整条没在设备上走过。
+🔴 **正式包装到 x86_64 模拟器上一启动就闪退，不是包坏了。** 包里只有 ARM 两种架构（刻意的，见上表），
+x86_64 模拟器靠 ARM 转译跑它，而 React Native 的 SoLoader 在转译环境里找不到原生库：
+`SoLoaderDSONotFoundError: couldn't find DSO to load: libreactnative.so`（它去 `base.apk!/lib/x86_64` 里找）。
+真 ARM 手机不走这条路。要在 x86 模拟器上试正式包，就本地打一个带 x86_64 的（`mobile-e2e.yml` 就是只出 x86_64 的包给模拟器）；
+发版的架构不为模拟器改（2026-11-27 用户定的）。
+
+**实测证据**（2026-11-27）：Run workflow 试跑（版本 `0.0.0-dev`）产物用 `aapt2 dump badging` 看是 `versionCode='1' versionName='0.0.0-dev'`、
+`native-code: 'arm64-v8a' 'armeabi-v7a'`、61.7 MB，清单的 size / sha256 和文件一致，Hermes 包里的清单地址是本仓库的
+`releases/latest/download/…`；照 job 里同样的命令用临时证书重签，证书从 `CN=Android Debug` 变成临时证书、v2 / v3 校验通过。
+装到 Windows 侧的 x86_64 模拟器（API 37）就是上面那个闪退。
+
+⚠️ **没验的**：真 tag 还没打过（正式证书、传进草稿 Release、清单最后传）；
+装到真手机上「旧版 → 提示 → 下载 → 覆盖安装」整条没走过。
 
 ## 设备：用**宿主机（Windows）侧**的 Expo Go，不要在 WSL 里跑模拟器
 
