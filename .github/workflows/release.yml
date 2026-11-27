@@ -263,3 +263,141 @@ jobs:
             apps/desktop/release/*/*.dmg
             apps/desktop/release/*/*.AppImage
           if-no-files-found: error
+
+  # 手机端安装包（#460）：Android APK + 更新清单 latest-android.json，和桌面安装包进同一个草稿 Release。
+  # App 里的「检查更新」读 releases/latest/download/latest-android.json（#461，apps/mobile/src/lib/app-update.ts）。
+  # iOS 不出：没有开发者账号就不能在商店外分发。
+  android:
+    name: Android（APK）
+    needs: [prepare]
+    if: always() && (needs.prepare.result == 'success' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # 🔴 版本号取自 tag，写进 app.json（不提交），同桌面端。仓库里的 0.0.1 只是开发包的占位。
+      # App 的「当前版本」读 app.json（lib/brand.ts），检查更新拿它和清单比 —— 两边都是 tag，才对得上。
+      # versionCode 由版本号算（major·1000000 + minor·1000 + patch），保证一路递增：
+      # 小于已装的那个，系统直接拒绝覆盖安装（「应用未安装」，不说原因）。预发布和正式版同一个 code
+      - name: 定版本号
+        id: ver
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            VER="${GITHUB_REF_NAME#v}"
+          else
+            VER="$INPUT_VERSION"
+          fi
+          if ! printf '%s' "$VER" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::版本号格式不对：$VER"; exit 1
+          fi
+          echo "value=$VER" >> "$GITHUB_OUTPUT"
+          node scripts/mobile-version.mjs "$VER" apps/mobile/app.json
+
+      - name: JDK 17
+        run: |
+          test -x "$JAVA_HOME_17_X64/bin/java"
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+
+      # 两个 EXPO_PUBLIC_* 是构建期替换的字符串：
+      # - 后端默认地址：装上之后能在「设置 → 服务器」里改，这只是默认值（同 apps/mobile/scripts/apk.mjs）
+      # - 更新清单：默认指向**跑这条流水线的仓库**自己的 Release —— fork 出去的仓库不会去查上游的版本
+      #   （App 源码里写死的默认值是本仓库的；这里按 github.repository 覆盖）
+      - name: expo prebuild
+        working-directory: apps/mobile
+        env:
+          EXPO_PUBLIC_API_BASE: ${{ vars.MOBILE_API_BASE || 'https://fra.wubunan.com' }}
+          EXPO_PUBLIC_UPDATE_MANIFEST_URL: ${{ vars.MOBILE_UPDATE_MANIFEST_URL || format('https://github.com/{0}/releases/latest/download/latest-android.json', github.repository) }}
+        run: pnpm exec expo prebuild --platform android --no-install
+
+      # 只出两个 ARM 架构：x86 只有模拟器用，四个全带安装包大一倍
+      - name: assembleRelease
+        working-directory: apps/mobile/android
+        env:
+          EXPO_PUBLIC_API_BASE: ${{ vars.MOBILE_API_BASE || 'https://fra.wubunan.com' }}
+          EXPO_PUBLIC_UPDATE_MANIFEST_URL: ${{ vars.MOBILE_UPDATE_MANIFEST_URL || format('https://github.com/{0}/releases/latest/download/latest-android.json', github.repository) }}
+        run: |
+          ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a --console=plain
+          ./gradlew --stop
+
+      # 🔴 打出来的包是**调试证书**签的（prebuild 的模板就这么配），正式 tag 一律用正式证书重签，缺了直接失败：
+      # - 调试证书是 React Native 模板里公开的那一份，谁都能拿它签一个「升级包」骗过系统的覆盖安装
+      # - 以后再换成正式证书，已装的用户得先卸载才能装新版（签名不一致系统拒绝覆盖），登录和设置全丢
+      # 证书只给 push（tag）构建，理由同上面桌面端「出安装包」那一步；试跑出调试签名的包，只作 artifact
+      # 四个 secret 怎么生成、怎么备份，见 apps/mobile/scripts/AGENTS.md「发版：GitHub Release 上的 APK」
+      - name: 用正式证书签名
+        env:
+          KEYSTORE_BASE64: ${{ github.event_name == 'push' && secrets.ANDROID_KEYSTORE_BASE64 || '' }}
+          KEYSTORE_PASSWORD: ${{ github.event_name == 'push' && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
+          KEY_ALIAS: ${{ github.event_name == 'push' && secrets.ANDROID_KEY_ALIAS || '' }}
+          KEY_PASSWORD: ${{ github.event_name == 'push' && secrets.ANDROID_KEY_PASSWORD || '' }}
+        run: |
+          APK=apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+          BT="$ANDROID_HOME/build-tools/$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort -V | tail -1)"
+          if [ "$GITHUB_EVENT_NAME" != "push" ]; then
+            echo "::warning::试跑：APK 是调试证书签的，只能自己装着试，不能发出去"
+            "$BT/apksigner" verify --print-certs "$APK" | head -3
+            exit 0
+          fi
+          for v in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!v}" ]; then
+              echo "::error::没配 secret ANDROID_${v}。正式版 APK 必须用正式证书签（见 apps/mobile/scripts/AGENTS.md）"
+              exit 1
+            fi
+          done
+          KS="$RUNNER_TEMP/release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$KS"
+          "$BT/apksigner" sign --ks "$KS" --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEY_PASSWORD "$APK"
+          rm -f "$KS"
+          CERTS="$("$BT/apksigner" verify --print-certs "$APK")"
+          echo "$CERTS" | head -3
+          # 重签没生效的话证书还是调试那张 —— 宁可红，也别把它发出去
+          if printf '%s' "$CERTS" | grep -q 'CN=Android Debug'; then
+            echo "::error::签完还是调试证书"; exit 1
+          fi
+
+      - name: 安装包改名 + 写更新清单
+        id: out
+        run: |
+          VER="${{ steps.ver.outputs.value }}"
+          DIR="$RUNNER_TEMP/mobile-release"
+          mkdir -p "$DIR"
+          NAME="admin-mobile-$VER.apk"
+          cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk "$DIR/$NAME"
+          node scripts/mobile-version.mjs --manifest "$VER" "$DIR/$NAME" > "$DIR/latest-android.json"
+          cat "$DIR/latest-android.json"
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+          ls -lh "$DIR"
+
+      # 🔴 清单**最后**传（同桌面端的 latest*.yml）：它先落地的话，那几秒里 App 读到新版本、点下载拿到 404
+      - name: 传到草稿 Release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DIR="${{ steps.out.outputs.dir }}"
+          gh release upload "$GITHUB_REF_NAME" "$DIR"/*.apk --clobber
+          gh release upload "$GITHUB_REF_NAME" "$DIR/latest-android.json" --clobber
+
+      - name: 上传产物（试跑时留个下载入口）
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-${{ steps.ver.outputs.value }}
+          path: ${{ steps.out.outputs.dir }}
+          if-no-files-found: error
