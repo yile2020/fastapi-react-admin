@@ -46,10 +46,14 @@ export function UpdatePrompt() {
       open
       onOpenChange={(open) => !open && close()}
       title={t('发现新版本 v{{version}}', { version: latest.version })}
+      // 大小拼进同一句：中文两句之间不能有空格，英文要有 —— 分成两个 key 拼接，总有一种语言是错的
       description={
-        t('当前是 v{{current}}。用浏览器下载安装包，下载完点开安装，登录和设置都会保留。', { current: CURRENT_VERSION }) +
-        (size ? ` ${t('安装包 {{size}}。', { size })}` : '')
+        size
+          ? t('当前是 v{{current}}，安装包 {{size}}。用浏览器下载，下载完点开安装，登录和设置都会保留。', { current: CURRENT_VERSION, size })
+          : t('当前是 v{{current}}。用浏览器下载安装包，下载完点开安装，登录和设置都会保留。', { current: CURRENT_VERSION })
       }
+      // ConfirmDialog 默认是 destructive（红色），那是给删除用的；下载是普通动作
+      variant="default"
       confirmLabel={t('下载')}
       cancelLabel={t('以后再说')}
       onConfirm={() => {
