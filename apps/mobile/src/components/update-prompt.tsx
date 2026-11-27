@@ -2,7 +2,7 @@
  * 启动时发现新版本就弹一次（#461）。挂在根 `_layout.tsx`、两棵路由树外面 —— 登录屏上也要看得到
  * （桌面端同理：终端机常停在登录页，见 `packages/platform/src/shell/desktop-update-prompt.tsx`）。
  *
- * - 只在 Android 的**正式包**里自动查，理由在 `lib/use-app-update.ts`
+ * - 只在发版打的 Android 正式包里自动查（`AUTO_CHECK`），理由在 `lib/use-app-update.ts`；设置页手动查到新版时也会弹这个框
  * - 「以后再说」只管这一次启动（模块级记一笔），下次冷启动还会再问；设置页那一行一直能点
  * - 自动检查失败**不弹**：启动时弹一个「检查更新失败」打断用户不值当，失败在设置页那一行看得到（硬纪律 9 的位置在那儿）
  * - 「下载」交给系统浏览器：它下载完由系统安装器接手。应用内下载 + 调起安装要 `REQUEST_INSTALL_PACKAGES`
@@ -14,7 +14,7 @@ import { Linking } from 'react-native'
 
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { toast } from '@/components/ui/toast'
-import { CURRENT_VERSION, UPDATE_SUPPORTED, useAppUpdate } from '@/lib/use-app-update'
+import { AUTO_CHECK, CURRENT_VERSION, useAppUpdate } from '@/lib/use-app-update'
 
 /** 这次启动里点过「以后再说」的版本 —— 模块级，屏重挂不会让它再弹 */
 const dismissed = new Set<string>()
@@ -29,7 +29,7 @@ export function formatSize(bytes: number | null): string | null {
 
 export function UpdatePrompt() {
   const { t } = useTranslation()
-  const q = useAppUpdate({ auto: UPDATE_SUPPORTED && !__DEV__ })
+  const q = useAppUpdate({ auto: AUTO_CHECK })
   const latest = q.data?.kind === 'available' ? q.data.latest : null
   const [, rerender] = React.useReducer((n: number) => n + 1, 0)
 

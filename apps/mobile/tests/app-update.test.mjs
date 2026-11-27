@@ -97,3 +97,11 @@ test('清单地址：EXPO_PUBLIC_UPDATE_MANIFEST_URL 覆盖默认值，空串当
     'https://intra.example.com/app/latest-android.json',
   )
 })
+
+test('开发包 / 试跑包认得出来：只认 -dev 后缀', () => {
+  assert.equal(m.isDevVersion('0.0.0-dev'), true)
+  assert.equal(m.isDevVersion('1.3.0-dev.2'), true)
+  assert.equal(m.isDevVersion('1.3.0'), false)
+  assert.equal(m.isDevVersion('1.3.0-rc.1'), false)
+  assert.equal(m.isDevVersion('1.3.0-devops'), false)
+})

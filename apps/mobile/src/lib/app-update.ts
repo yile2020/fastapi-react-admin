@@ -92,6 +92,15 @@ export function parseManifest(raw: unknown, manifestUrl: string): UpdateManifest
   }
 }
 
+/**
+ * 开发包 / 试跑包：版本号带 `-dev`（仓库里 `app.json` 的占位是 `0.0.0-dev`，Run workflow 试跑默认也是它）。
+ * 这种包启动时不自动检查：它们是调试证书签的，提示去下的正式包装不上去（签名不一致，系统只说「应用未安装」）；
+ * 手机端 E2E 打的也是这种包，启动弹窗会挡住 Maestro 的点击。设置页的手动检查照常能用。
+ */
+export function isDevVersion(version: string): boolean {
+  return /-dev(?:[.-]|$)/.test(version.trim())
+}
+
 export type UpdateCheck =
   | { kind: 'latest'; latest: UpdateManifest }
   | { kind: 'available'; latest: UpdateManifest }

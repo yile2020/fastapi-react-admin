@@ -98,7 +98,7 @@ transformer，在 store 里看得见。gradle 的 `createBundleReleaseJsAndAsset
 
 | 步骤 | 为什么这么做 |
 |---|---|
-| 版本号取自 tag，`scripts/mobile-version.mjs` 写进 `app.json`（不提交） | 同桌面端。原来（#234）手动单独编号，每个 Release 都带 APK 之后漏改一次，已装的 App 就永远不提示更新 |
+| 版本号取自 tag，`scripts/mobile-version.mjs` 写进 `app.json`（不提交；仓库里是占位 `0.0.0-dev`，带 `-dev` 的包启动时不自动检查更新） | 同桌面端。原来（#234）手动单独编号，每个 Release 都带 APK 之后漏改一次，已装的 App 就永远不提示更新 |
 | `versionCode` = major·1000000 + minor·1000 + patch | 必须一路递增：比已装的小，系统拒绝覆盖安装，只说「应用未安装」 |
 | prebuild → `assembleRelease`（只出 arm64-v8a / armeabi-v7a） | x86 只有模拟器用，四个架构全带安装包大一倍 |
 | 🔴 正式 tag 用正式证书 `apksigner` 重签，缺 secret 直接红 | 模板配的是调试证书，那份是公开的（谁都能签一个「升级包」）；以后再换正式证书，已装的用户得先卸载才能升级 |
