@@ -125,7 +125,7 @@ base64 -w0 fra-release.jks > fra-release.jks.b64     # macOS：base64 -i fra-rel
 🔴 **正式包装到 x86_64 模拟器上一启动就闪退，不是包坏了。** 包里只有 ARM 两种架构（刻意的，见上表），
 x86_64 模拟器靠 ARM 转译跑它，而 React Native 的 SoLoader 在转译环境里找不到原生库：
 `SoLoaderDSONotFoundError: couldn't find DSO to load: libreactnative.so`（它去 `base.apk!/lib/x86_64` 里找）。
-真 ARM 手机不走这条路。要在 x86 模拟器上试正式包，就本地打一个带 x86_64 的（`mobile-e2e.yml` 就是只出 x86_64 的包给模拟器）；
+真 ARM 手机不走这条路。要在 x86 模拟器上试正式包，就本地打一个带 x86_64 的（移动端 E2E 那条 workflow 就是只出 x86_64 的包给模拟器）；
 发版的架构不为模拟器改（2026-11-27 用户定的）。
 
 **实测证据**（2026-11-27）：Run workflow 试跑（版本 `0.0.0-dev`）产物用 `aapt2 dump badging` 看是 `versionCode='1' versionName='0.0.0-dev'`、
