@@ -302,3 +302,11 @@ E2E 那条第一版**变异不红**：新名字写成 `${旧名字}改`，「显
 ⚠️ 没改存储（「MySQL 改成存 UTC」要动全部 99 个时间列和已有数据，而签名本来就是按 UTC 规范化的）。被存歪的只是那一小时
 行的 `created_time` 显示值（早一小时）—— 这是 `TimeZone` 在 MySQL 上本来就有的缺口（`tests/test_timezone_dst.py` 最后那条 xfail），这次只让它不再触发误报。
 PostgreSQL / SQL Server 存偏移，第一种读法就对得上；默认的 `Asia/Shanghai` 没有夏令时，碰不到。
+
+## 🔴 按键取行要经 `_by_keys`：SQL Server 上 `FORCESEEK`（#455）
+
+审计在语句前、提交前按主键 / 父列拍快照（`_snapshot` / `_current_rows`）。SQL Server 在 RCSI 关着时读也加共享锁，
+小表上 `IN (20 个值)` 优化器选的是扫描 —— 排在别的事务没提交的行后面，删用户 × 用户导入提交就这么成了 1205 死锁。
+新写「按一批键取行」的查询一律走 `_by_keys(table, column, values)`：列领头某个索引时它在 mssql 上加 `WITH (FORCESEEK)`，
+没有可 seek 的索引时不加（否则 8622）。新登记关联表 / 子表时，父列要有索引 —— `test_m2m_lock_contention.py` 的静态守卫会红。
+症状、死锁图、四组对照数字和变异记在 [`app/admin` 分册](../../app/admin/AGENTS.md)「删用户 × 用户导入提交互相死锁」。
