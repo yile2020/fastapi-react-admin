@@ -168,6 +168,28 @@ def _chunks(values: list[Any]) -> Iterable[list[Any]]:
         yield values[i : i + _IN_CHUNK]
 
 
+def _leads_an_index(table: sa.Table, column: sa.Column) -> bool:
+    """这一列是不是某个索引（主键 / 唯一约束 / 普通索引）的第一列 —— 是的话按它取行才 seek 得了"""
+    keys = [table.primary_key.columns.values()]
+    keys += [list(index.columns) for index in table.indexes]
+    keys += [list(c.columns) for c in table.constraints if isinstance(c, sa.UniqueConstraint)]
+    return any(cols and cols[0] is column for cols in keys)
+
+
+def _by_keys(table: sa.Table, column: sa.Column, values: list[Any], *cols: Any) -> sa.Select:
+    """按一批键取行（`column IN (...)`）。
+
+    🔴 SQL Server 上要 `FORCESEEK`（#455）：RCSI 关着时读要加共享锁，而小表上 `IN (20 个值)` 优化器宁可扫整个索引 ——
+    扫描会在**每一行**上要锁，排在别的事务没提交的行后面。两个事务各自在同一张表里有没提交的行、又都在提交前拍快照，
+    就是互等（删用户 × 用户导入提交，实测 1205）。只在这一列确实领头某个索引时加：
+    没有可 seek 的索引时 `FORCESEEK` 直接报 8622
+    """
+    stmt = sa.select(*(cols or (table,))).where(column.in_(values))
+    if _leads_an_index(table, column):
+        stmt = stmt.with_hint(table, 'WITH (FORCESEEK)', dialect_name='mssql')
+    return stmt
+
+
 # ── 抓 ────────────────────────────────────────────────────────────────────────
 
 
@@ -222,7 +244,7 @@ def _capture_entity(st: ORMExecuteState, spec: registry.AuditedEntity) -> None:
                 'origin': origin,
             })
             return
-        rows = [r for chunk in _chunks(ids) for r in _fetch(session, sa.select(table).where(pk.in_(chunk)))]
+        rows = [r for chunk in _chunks(ids) for r in _fetch(session, _by_keys(table, pk, chunk))]
     else:
         where = st.statement.whereclause
         if where is None:
@@ -335,7 +357,7 @@ def _snapshot(session: Session, spec: _Folded, parents: list[Any]) -> dict[Any, 
         m_col = table.c[spec.member_column]
         members: dict[Any, set[Any]] = {p: set() for p in parents}
         for chunk in _chunks(parents):
-            stmt = sa.select(p_col, m_col).where(p_col.in_(chunk))
+            stmt = _by_keys(table, p_col, chunk, p_col, m_col)
             if spec.active:
                 stmt = stmt.where(table.c[spec.active] == 0)
             for r in _fetch(session, stmt):
@@ -343,7 +365,7 @@ def _snapshot(session: Session, spec: _Folded, parents: list[Any]) -> dict[Any, 
         return {p: frozenset(m) for p, m in members.items()}
     rows: dict[Any, Any] = dict.fromkeys(parents)
     for chunk in _chunks(parents):
-        for r in _fetch(session, sa.select(table).where(p_col.in_(chunk))):
+        for r in _fetch(session, _by_keys(table, p_col, chunk)):
             # 只留算出来的值：子表那一行（二次验证的密钥密文）不在内存里多待
             rows[r[spec.parent_column]] = {name: v.of(r) for name, v in spec.values.items()}
     return rows
@@ -538,7 +560,7 @@ class _Record:
 def _current_rows(session: Session, spec: registry.AuditedEntity, ids: list[Any]) -> dict[Any, dict[str, Any]]:
     out: dict[Any, dict[str, Any]] = {}
     for chunk in _chunks(ids):
-        for r in _fetch(session, sa.select(spec.table).where(spec.pk.in_(chunk))):
+        for r in _fetch(session, _by_keys(spec.table, spec.pk, chunk)):
             out[r[spec.pk.name]] = dict(r)
     return out
 
