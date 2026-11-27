@@ -178,6 +178,11 @@ jobs:
   # 这些对账和方言无关，留一条 PostgreSQL 就守得住；而后端代码没动时，SQL Server 上的
   # 方言行为也不会变，那一遍是重复的。E2E 的后端照旧是 SQL Server。
   #
+  # 🔴 **这一档成立的前提是 `pytest · PostgreSQL` 在 ruleset 的必需检查里。** 它原来不在
+  # （必需的 pytest 只有 SQL Server 那条）：那样的话纯前端 PR 写错一个权限码，只有 PostgreSQL
+  # 那条红、而它不拦合并，SQL Server 那条 skipped 算通过，PR 能直接合。评审时发现的。
+  # 哪天把 PostgreSQL 从必需检查里拿掉，这一档要一起撤。
+  #
   # 判据是**白名单**：只有每个文件都落在下面列出的前端 / 文档目录里才算没碰后端。
   # `apps/api/`、`apps/worker/`、`.github/`、`deploy/`、`scripts/`、根目录的锁文件和
   # 配置，以及以后新增的任何目录，都落进 `*)` 那一支 —— 认不出来的一律当作碰了后端。
@@ -374,7 +379,7 @@ jobs:
   # PostgreSQL 的平行 job（issue #5）。
   #
   # 🔴 **2026-09-08 起默认开发库换成了 PostgreSQL，但这个 job 仍然不是「取代」
-  # 上面的 `test-backend`。** 两条都是必跑的方言覆盖，结构刻意保持一一对应，
+  # 上面的 `test-backend`。** 两条都是方言覆盖（改动没碰后端的 PR 只跑这一条，见 `changes` 的注释），结构刻意保持一一对应，
   # 改一个记得看另一个——job id 本身没有改名，改名有弄丢 GitHub 分支保护
   # required checks 的风险，交给要动它的人自己决定。
   #

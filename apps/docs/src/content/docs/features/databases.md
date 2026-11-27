@@ -12,7 +12,7 @@ sidebar:
 | | 驱动 | 本地怎么起 | 验证情况 |
 |---|---|---|---|
 | **PostgreSQL**（默认） | `asyncpg` | `docker compose -f docker-compose.dev.yml up -d`（PostgreSQL 16） | CI 的 `pytest · PostgreSQL` job：每次跑后端全套，外加一步空库上的迁移容错 |
-| **SQL Server** | `aioodbc` + 微软 ODBC Driver 18 | 同一份 compose 的 `--profile sqlserver`（SQL Server 2022） | CI 的 `pytest · SQL Server` job 跑后端全套；`playwright · E2E` 的前端端到端测试也连 SQL Server |
+| **SQL Server** | `aioodbc` + 微软 ODBC Driver 18 | 同一份 compose 的 `--profile sqlserver`（SQL Server 2022） | CI 的 `pytest · SQL Server` job 跑后端全套（只改了前端或文档的 PR 会跳过它，那时由 `pytest · PostgreSQL` 把关）；`playwright · E2E` 的前端端到端测试也连 SQL Server |
 | **MySQL** | `asyncmy` | 自备 MySQL 8.x | **不在 CI 里。** 2026-10-31 本地在 MySQL 8.4.13 上跑全套：1451 条，1433 过、18 跳过、0 红 |
 
 同一次 MySQL 验证还走了升级路径：用 v0.0.1 的 `fba init` 建库，再拿当前代码 `alembic upgrade head` 把整条链走完。结果是 56 张表，和模型比对结构差异为 0（只剩 1 条注释差异）。
