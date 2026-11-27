@@ -10,8 +10,9 @@
 死锁要两边互等，这里只造了一边；但成环的那条边就是「B 等 A 的行」，没有这条边就成不了环。
 
 两条行为测试只在 SQL Server 上跑：PostgreSQL 读不加锁，在那里恒绿、证明不了任何事。MySQL 没实测过。
-⚠️ 导入那条只在**小表**上抓得到「去掉 FORCESEEK」：`sys_user_role` 灌到两千多行之后优化器自己就选 seek 了，
-变异照样绿（实测）。CI 的测试库是新建的（十来行），抓得到；本地库被反复灌过数据的话，以下面两条静态守卫为准。
+⚠️ 导入那条只在**小表**上抓得到「去掉 FORCESEEK」：本地新建的测试库（`sys_user_role` 10 行）上两次都红在 1222，
+灌到两千多行之后优化器自己就选 seek 了，变异照样绿（都是实测）。CI 上跑整套时这张表有多少行、选什么计划，**没验过** ——
+这一条以下面两条静态守卫为准（它们不看计划）。
 """
 
 import contextlib
@@ -23,8 +24,10 @@ from types import SimpleNamespace
 import bcrypt
 import pytest
 
-from sqlalchemy import delete, insert, select, text
+from sqlalchemy import delete, event, insert, select
 from sqlalchemy.dialects import mssql, postgresql
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.pool import NullPool
 from starlette.background import BackgroundTasks
 
 from backend.app.admin.crud.crud_user import user_dao
@@ -36,6 +39,7 @@ from backend.common.data_change import data_change_source, registry
 from backend.common.data_change.capture import _by_keys, _leads_an_index
 from backend.common.dataio.importing import ImportContext, ImportRow
 from backend.core.conf import settings
+from backend.database.db import create_database_async_session, get_database_url, register_mssql_datetimeoffset
 from backend.tests.utils.db import async_test_db_session
 
 sqlserver_only = pytest.mark.skipif(
@@ -55,15 +59,28 @@ def _call(client, fn, *args, **kwargs):
 
 
 @contextlib.asynccontextmanager
-async def _lock_timeout(db):
-    """连接级的 `SET LOCK_TIMEOUT`，用完还原 —— 连接会回到池里给别的测试用"""
-    await db.execute(text(f'SET LOCK_TIMEOUT {LOCK_WAIT_MS}'))
+async def _impatient_session():
+    """B 用的会话：每条连接一建好就 `SET LOCK_TIMEOUT`，等锁超过 `LOCK_WAIT_MS` 就报 1222，不再一直等。
+
+    🔴 B 要用自己的引擎（`NullPool`：连接用完就关），不能在共享池的连接上设了再还原。实测（评审抓到的）：
+    原来的写法是设完 → 提交 → `rollback()` → 再 `SET LOCK_TIMEOUT -1`，可提交那一刻连接已经回池了，还原落在池里
+    另一条连接上（池是先进先出），设过 3000 的那条原样留在池里 —— 4 条池连接里有一条是 3000。之后哪条测试拿到它、
+    等锁超过 3 秒，就是一个莫名其妙的 1222。
+    超时设在 `connect` 事件上（同 `register_mssql_datetimeoffset`，对底层 pyodbc 连接同步执行），
+    这样不管提交 / 回滚之后换没换连接都带着它
+    """
+    engine = create_async_engine(get_database_url(unittest=True), poolclass=NullPool)
+    register_mssql_datetimeoffset(engine)
+
+    def _set_lock_timeout(dbapi_connection, _record):
+        dbapi_connection._connection._conn.execute(f'SET LOCK_TIMEOUT {LOCK_WAIT_MS}')
+
+    event.listen(engine.sync_engine, 'connect', _set_lock_timeout)
     try:
-        yield
+        async with create_database_async_session(engine)() as db:
+            yield db
     finally:
-        await db.rollback()
-        await db.execute(text('SET LOCK_TIMEOUT -1'))
-        await db.commit()
+        await engine.dispose()
 
 
 @pytest.fixture
@@ -150,7 +167,7 @@ def test_deleting_a_user_does_not_wait_on_another_transactions_new_role_rows(cli
                 PASSWORD,
             )
             try:
-                async with async_test_db_session() as db, _lock_timeout(db):
+                async with _impatient_session() as db:
                     request = SimpleNamespace(user=SimpleNamespace(id=ctx['admin']))
                     count = await user_service.delete(
                         db=db, request=request, background_tasks=BackgroundTasks(), pk=ctx['target']
@@ -175,28 +192,25 @@ def test_an_import_commit_does_not_wait_on_another_users_pending_delete(client, 
     rows = _import_rows(ctx, IMPORT_ROWS)
 
     async def run():
+        import_ctx = ImportContext(user=SimpleNamespace(id=ctx['admin']), background_tasks=BackgroundTasks())
+        # 提交前的重新校验只读、读完就放锁，不参与成环；放在 A 开始之前，免得它和 A 那一行的写锁搅在一起
         async with async_test_db_session() as db:
-            import_ctx = ImportContext(user=SimpleNamespace(id=ctx['admin']), background_tasks=BackgroundTasks())
-            # 提交前的重新校验只读、读完就放锁，不参与成环；放在 A 开始之前，免得它和 A 那一行的写锁搅在一起
             await USER_IMPORT.validate(db, rows, 'create', import_ctx)
-            assert all(row.ok for row in rows), [row.errors for row in rows]
-            await db.rollback()
+        assert all(row.ok for row in rows), [row.errors for row in rows]
 
-            async with async_test_db_session() as holder:
-                request = SimpleNamespace(user=SimpleNamespace(id=ctx['admin']))
-                await user_service.delete(
-                    db=holder, request=request, background_tasks=BackgroundTasks(), pk=ctx['target']
-                )
-                try:
-                    async with _lock_timeout(db):
-                        with data_change_source('import', uuid.uuid4().hex, actor_id=ctx['admin']):
-                            outcome = await USER_IMPORT.commit(db, rows, import_ctx)
-                        # `_user_commit` 把数据库错误吞成「这一行失败」（原样的错误只进日志）—— 这里要的是它根本没失败
-                        assert not outcome.failed, outcome.failed
-                        await db.commit()
-                        return len(outcome.created)
-                finally:
-                    await holder.rollback()
+        async with async_test_db_session() as holder:
+            request = SimpleNamespace(user=SimpleNamespace(id=ctx['admin']))
+            await user_service.delete(db=holder, request=request, background_tasks=BackgroundTasks(), pk=ctx['target'])
+            try:
+                async with _impatient_session() as db:
+                    with data_change_source('import', uuid.uuid4().hex, actor_id=ctx['admin']):
+                        outcome = await USER_IMPORT.commit(db, rows, import_ctx)
+                    # `_user_commit` 把数据库错误吞成「这一行失败」（原样的错误只进日志）—— 这里要的是它根本没失败
+                    assert not outcome.failed, outcome.failed
+                    await db.commit()
+                    return len(outcome.created)
+            finally:
+                await holder.rollback()
 
     assert _call(client, run) == IMPORT_ROWS
 
