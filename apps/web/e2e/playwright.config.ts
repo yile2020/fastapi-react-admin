@@ -11,6 +11,26 @@ const WEB_PORT = 1126
 const API_PORT = 8001
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..")
 
+/**
+ * CI 把整套用例拆成几片、各在一台 runner 上跑（`.github/workflows/ci.yml` 的 `test-e2e`），
+ * 每片设 `E2E_SHARD=<第几片>/<共几片>`。本地不设，照旧整套跑、出 HTML 报告。
+ *
+ * 写坏了要当场报错：`shard` 给 `undefined` 时 Playwright 会**整套都跑**，
+ * 四片各跑一遍全量照样全绿，只是白等四倍时间，看不出来。
+ */
+function parseShard(raw: string | undefined) {
+  if (!raw) return undefined
+  const m = /^(\d+)\/(\d+)$/.exec(raw)
+  const current = Number(m?.[1])
+  const total = Number(m?.[2])
+  if (!m || current < 1 || current > total) {
+    throw new Error(`E2E_SHARD 要写成「第几片/共几片」（比如 2/4），拿到的是 ${JSON.stringify(raw)}`)
+  }
+  return { current, total }
+}
+
+const SHARD = parseShard(process.env.E2E_SHARD)
+
 export default defineConfig({
   testDir: "./tests",
   fullyParallel: true,
@@ -23,7 +43,10 @@ export default defineConfig({
   // 不是 CI 独有：`pnpm exec playwright show-report` 能直接在浏览器里点开每条用例的
   // 截图/trace，比在终端里翻堆栈方便得多。`open: "never"` 只是不自动弹浏览器，
   // 报告文件（`apps/web/playwright-report/`）照样生成。
-  reporter: [["list"], ["html", { open: "never" }]],
+  //
+  // 分片时换成 blob：每片只有一部分用例，各出一份 HTML 没法看，CI 把几片的 blob 合成一份。
+  reporter: SHARD ? [["list"], ["blob"]] : [["list"], ["html", { open: "never" }]],
+  shard: SHARD,
 
   // 一次性环境准备：把 fba_test 里的登录验证码关掉。不放进每条测试的 fixture——
   // 它是环境准备，不是测试本身的一部分。见 global-setup.ts 头注释。
