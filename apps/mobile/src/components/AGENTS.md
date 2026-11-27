@@ -407,3 +407,22 @@ web 的抽屉每次打开是新挂载、碰巧没踩到。
 登录屏入口在 Maestro `e2e/flows/server-from-login.yaml`：连不上的地址报错 → 换成 `127.0.0.1:8001`（CI 里 `adb reverse`）→ 登录屏显示新地址 → 登录成功。
 评审跟进加的 7 条（宽松主机 · 同主机换端口要等 · A→B→A 要等 A · 探测取消不换 · 探测失败分类）修前全红、修后全绿（2026-11-22 本机 `node --test`）。
 ⚠️ **没验的**：这条 Maestro 只在 CI 上跑（本机没有模拟器）；第一次 CI 跑红过一次（光标落在中间，见 [`e2e` 分册](../../e2e/AGENTS.md)），改完之后的那次以 CI 结果为准；iOS（含 Keychain 跨重装留着地址）一次没跑；真机上没点过。
+
+## 检查更新（`update-prompt.tsx` · `lib/app-update.ts` · `lib/use-app-update.ts`，#461）
+
+读发版时传进 GitHub Release 的 `latest-android.json`（怎么出的见 [`scripts/` 分册](../../scripts/AGENTS.md)「发版」一节）。
+启动时的提示（根 `_layout.tsx`，两棵路由树外面，登录屏上也弹）和设置页「检查更新」那一行共用一份查询。
+
+- 只在 **Android** 上查；启动时只在**正式包**里自动查 —— 开发包的版本是 `app.json` 的占位值，自动查的话每次启动都弹「有新版」
+- 🔴 **失败不能显示成「已是最新」**（硬纪律 9）：设置页那一行分五种 —— 点按检查 / 检查中 / 检查失败点按重试 / 已是最新 / vX 可下载。
+  清单 404（还没发过带 APK 的正式版）、清单形状不对、认不出当前版本号，一律是「检查失败」。桌面端踩过反例（`apps/desktop/src/main/updater.ts` 头注释）
+- 启动时自动检查失败**不弹**：失败在设置页看得到，启动就弹错误打断人不值当
+- 「下载」交给系统浏览器（`Linking.openURL`），下载完由系统安装器接手。应用内下载 + 调起安装要 `REQUEST_INSTALL_PACKAGES` 和 FileProvider，没做
+- 「以后再说」只管这一次启动（模块级记一笔）
+- 清单读 `releases/latest/download/…`（GitHub 跳到最新**正式** Release，草稿和预发布不算；不走 API，没有 60 次/小时的限额），
+  `EXPO_PUBLIC_UPDATE_MANIFEST_URL` 构建期可换；10 秒超时 —— 连 GitHub 不通时常常是挂住，不是立刻失败
+
+**实测证据**：`tests/app-update.test.mjs` 10 条（`pnpm --filter @admin/mobile test`）：版本按数值比、预发布比正式版旧、认不出的版本不当成一样、
+APK 按清单目录解析、清单形状不对抛错、404 是失败、挂住按超时报错。反向验证：版本改回按字符串比、404 改成返回「0.0.0」→ 对应两条红。
+⚠️ **没在设备上跑过**：启动弹窗、设置页那一行、浏览器下载后的覆盖安装；iOS 不显示这一行（没验）。
+

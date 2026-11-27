@@ -11,7 +11,9 @@
 | macOS Intel | `...-x64.dmg`（文件名不带 arm64） | |
 | Linux x64 | `...-x86_64.AppImage` | `chmod +x` 后直接运行，不用装 |
 
-`.blockmap` 与 `latest*.yml` 是**自动更新**用的，人不需要下载。
+| Android 手机 | `admin-mobile-<版本>.apk` | 手机 App（原生界面，不是网页套壳）。用浏览器下载后点开安装，首次要允许「安装未知应用」 |
+
+`.blockmap`、`latest*.yml` 与 `latest-android.json` 是**自动更新 / 检查更新**用的，人不需要下载。
 
 ## 装完第一件事：填后端地址
 
@@ -35,6 +37,9 @@
 - **打印**：Windows 上是真的静默打印；macOS/Linux 上打印链路能跑，但没有在真机标签机上验过
 
 ## 更新从哪来
+
+手机 App 启动时会读这个仓库最新正式版里的 `latest-android.json`，有新版就提示下载（设置 →「检查更新」也能手动查）。
+iOS 暂无安装包。
 
 默认读这个仓库的 Release。内网部署（客户出不去公网）可以在客户机的 `config.json` 里
 填 `updateUrl`，指向自己的静态目录 —— **不用为内网单独打一版**。

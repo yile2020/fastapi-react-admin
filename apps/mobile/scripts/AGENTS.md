@@ -83,13 +83,47 @@ transformer，在 store 里看得见。gradle 的 `createBundleReleaseJsAndAsset
   所以 gradle 镜像、代理、SDK 路径这些**只能在 `scripts/apk.mjs` 里每次重写** ——
   改完提交不进版本库，下一次 `prebuild --clean` 就回到原样
 - `release` 用的是模板自带的 **debug keystore**，所以能直接出可安装的包。
-  🔴 真发版要生成自己的 keystore（`android/app/build.gradle` 里有注释提醒）
+  🔴 真发版用 CI 那条路（下一节），它会用正式证书重签；本地这个脚本出的包只给自己装着试
 - 🔴 `EXPO_PUBLIC_API_BASE` 要在打包时显式给成生产地址。它是**构建期替换的
   字符串**，不给就是 dev 的 `http://127.0.0.1:8088` —— 装到手机上第一个请求
   就连不上，而报错只说「连不上服务器」。（App 里能改，见
   [`src/app/` 分册](../src/app/AGENTS.md) 的设置一节，但一个装上就连不通的包不该发出去）
 - `app.json` 里 `android.edgeToEdgeEnabled` 已删：Android 16 起 edge-to-edge
   是强制的，那个键被 Expo 废弃了，prebuild 会警告
+
+## 发版：GitHub Release 上的 APK（#460）
+
+打 `v*` tag 时 `.github/workflows/release.yml` 的 `android` job 出 `admin-mobile-<版本>.apk` 和更新清单
+`latest-android.json`，和桌面安装包进同一个草稿 Release。App 的「检查更新」读这份清单（#461，`src/lib/app-update.ts`）。
+
+| 步骤 | 为什么这么做 |
+|---|---|
+| 版本号取自 tag，`scripts/mobile-version.mjs` 写进 `app.json`（不提交） | 同桌面端。原来（#234）手动单独编号，每个 Release 都带 APK 之后漏改一次，已装的 App 就永远不提示更新 |
+| `versionCode` = major·1000000 + minor·1000 + patch | 必须一路递增：比已装的小，系统拒绝覆盖安装，只说「应用未安装」 |
+| prebuild → `assembleRelease`（只出 arm64-v8a / armeabi-v7a） | x86 只有模拟器用，四个架构全带安装包大一倍 |
+| 🔴 正式 tag 用正式证书 `apksigner` 重签，缺 secret 直接红 | 模板配的是调试证书，那份是公开的（谁都能签一个「升级包」）；以后再换正式证书，已装的用户得先卸载才能升级 |
+| 清单**最后**传 | 同桌面端 `latest*.yml`：先落地的话那几秒里 App 读到新版、点下载拿到 404 |
+| 试跑（Run workflow）出调试签名的包，作为 artifact | 证书只给过了闸门的 tag 构建（同桌面端，`release-workflow.test.mjs` 核对接线） |
+
+**证书只生成一次**（JDK 自带 `keytool`，在自己电脑上跑，别在 CI 里生成）：
+
+```bash
+keytool -genkeypair -v -keystore fra-release.jks -alias fra -keyalg RSA -keysize 4096 -validity 36500
+base64 -w0 fra-release.jks > fra-release.jks.b64     # macOS：base64 -i fra-release.jks
+```
+
+仓库 Settings → Secrets → Actions 里配四个：`ANDROID_KEYSTORE_BASE64`（上面那个 .b64 的内容）·
+`ANDROID_KEYSTORE_PASSWORD` · `ANDROID_KEY_ALIAS`（上面是 `fra`）· `ANDROID_KEY_PASSWORD`。
+🔴 **`fra-release.jks` 和两个密码另外备份**（密码管理器 + 离线一份）：丢了就再也发不出能覆盖安装的升级包，
+所有用户都得卸载重装；也别提交进仓库。
+
+两个可选的仓库变量（Settings → Variables）：`MOBILE_API_BASE`（App 的默认后端，默认 `https://fra.wubunan.com`）·
+`MOBILE_UPDATE_MANIFEST_URL`（清单地址，默认是**跑流水线的那个仓库**的 `releases/latest/download/latest-android.json`，fork 不会去查上游）。
+国内 / 内网要自己托管时：把 Release 里的 APK 和 `latest-android.json` **两个文件原样**放到同一个目录，变量指向那个清单 ——
+清单里 `apk` 写的是文件名，App 按清单所在目录解析。
+
+⚠️ **没验的**：正式证书重签这一步只在本机用临时证书跑过同样的 `apksigner` 命令（见 PR），真 tag 还没打过；
+装到手机上「旧版 → 提示 → 下载 → 覆盖安装」整条没在设备上走过。
 
 ## 设备：用**宿主机（Windows）侧**的 Expo Go，不要在 WSL 里跑模拟器
 

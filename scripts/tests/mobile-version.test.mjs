@@ -30,7 +30,9 @@ test("versionCode 拒绝认不出的版本号和会撞段的数字", () => {
   assert.throws(() => versionCode("v1.2.0"), /格式不对/)
   assert.throws(() => versionCode("1.2"), /格式不对/)
   assert.throws(() => versionCode("1.1000.0"), /超过 999/)
-  assert.throws(() => versionCode("0.0.0"), /超出/)
+  assert.throws(() => versionCode("2101.0.0"), /超出/)
+  // 试跑默认的 0.0.0-dev：Android 的 versionCode 至少是 1
+  assert.equal(versionCode("0.0.0-dev"), 1)
 })
 
 test("写 app.json：只动 version 和 android.versionCode，其余原样", (t) => {

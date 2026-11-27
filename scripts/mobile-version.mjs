@@ -24,8 +24,9 @@ export function versionCode(version) {
   if (!m) throw new Error(`版本号格式不对：${version}`)
   const [major, minor, patch] = m.slice(1, 4).map(Number)
   if (minor > 999 || patch > 999) throw new Error(`minor / patch 超过 999，versionCode 会和下一段撞上：${version}`)
-  const code = major * 1_000_000 + minor * 1_000 + patch
-  if (code < 1 || code > 2_100_000_000) throw new Error(`versionCode 超出 Android 允许的范围：${code}`)
+  // versionCode 至少是 1：试跑（Run workflow）默认的 0.0.0-dev 算出来是 0，Android 不收
+  const code = Math.max(1, major * 1_000_000 + minor * 1_000 + patch)
+  if (code > 2_100_000_000) throw new Error(`versionCode 超出 Android 允许的范围：${code}`)
   return code
 }
 
