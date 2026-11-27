@@ -97,7 +97,12 @@ test.describe("消息通知中心", () => {
     }
 
     await page.goto("/notification")
-    await expect(page.getByTestId("notification-badge")).toHaveText("2")
+    // ⚠️ 这里不断言红点是 "2"。**公告也算进 admin 的未读数**，而 `notify-bot.spec.ts` /
+    // `notice-*.spec.ts` 在别的 worker 里会发全员公告 —— 上面的 serial 只管得住本文件。
+    // #455 那次 CI 就是 beforeEach 清零之后、断言之前，群机器人那条用例发了一条公告，
+    // 红点成了 "3"。这条守的是「列表页标完，外壳里的红点跟着消失」；
+    // 未读数本身对不对是第一条用例的事
+    await expect(page.getByTestId("notification-badge")).toBeVisible()
     await expect(page.getByTestId("notification-table")).toBeVisible()
 
     // 列表页那个按钮走二次确认（一次点掉所有未读，不可撤销）
