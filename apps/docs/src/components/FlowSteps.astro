@@ -1,0 +1,144 @@
+---
+/**
+ * 按顺序走的流程：一个区段（浏览器 / 服务端…）+ 一串编号步骤，步骤之间一条竖线串起来，
+ * 区段末尾可以带一段「跨过去」的连接（请求发出去 / 响应回来）。
+ *
+ * 步骤内容**写在 MDX 正文里**（普通的有序列表），组件只负责排版：
+ * `src/lib/markdown.ts` 导出给 AI 读的 `.md` 时会去掉独占一行的组件标签，列表原样留下 ——
+ * 换成 props 传进来的话，那一节在 `.md` 里就只剩空白了。
+ *
+ * 每一步的写法：第一段是「**短名字** [`文件`](链接)」，后面的段落是说明。
+ * 编号用浏览器自带的 `list-item` 计数器，所以 `5.` 开头的列表就从 5 数起。
+ *
+ *   <FlowSteps zone="服务端" sub="apps/api/backend" icon="server" hl={9} hop="…" back>
+ *
+ *   5. **JWT 中间件** [`…/jwt_auth_middleware.py`](https://github.com/…)
+ *
+ *      解令牌……
+ *
+ *   </FlowSteps>
+ */
+interface Props {
+  zone: string
+  /** 区段名后面那行等宽小字（通常是目录） */
+  sub?: string
+  icon?: 'browser' | 'server'
+  /** 要强调的那一步的编号（按列表上的编号，不是第几个） */
+  hl?: number
+  /** 区段末尾的连接：hopLabel 是「请求 / 响应」这样的短词，hop 是协议那一行 */
+  hopLabel?: string
+  hop?: string
+  /** 胶囊里协议后面那句普通文字（中文别塞进等宽的 hop 里） */
+  hopNote?: string
+  /** 连接是往回走的（响应回到前面的区段），画成回折的箭头、线不再往下接 */
+  back?: boolean
+}
+const { zone, sub, icon = 'browser', hl, hopLabel, hop, hopNote, back = false } = Astro.props
+
+let html = await Astro.slots.render('default')
+if (hl) {
+  // 列表是 Markdown 渲染出来的，组件拿到的是 HTML 字符串：按 <ol start> 换算出是第几个 <li>，给它加 class
+  const start = Number(/<ol[^>]*\sstart="(\d+)"/.exec(html)?.[1] ?? 1)
+  let i = 0
+  html = html.replace(/<li(?=[\s>])/g, (m) => (i++ === hl - start ? '<li class="flow-hl"' : m))
+}
+
+const ICONS = {
+  browser: '<rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/>',
+  server: '<rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01M6 18h.01"/>',
+}
+const ARROW = back
+  ? '<path d="M9 14 4 9l5-5"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>'
+  : '<path d="M12 5v14M19 12l-7 7-7-7"/>'
+---
+
+<section class="flow" data-back={back ? '' : undefined}>
+  <header class="flow-zone">
+    <span class="flow-icon" set:html={`<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[icon]}</svg>`} />
+    <span class="flow-zone-label">{zone}</span>
+    {sub && <span class="flow-zone-sub">{sub}</span>}
+  </header>
+  <div class="flow-steps" data-hop={hop ? '' : undefined}><Fragment set:html={html} /></div>
+  {hop && (
+    <div class="flow-hop">
+      <span class="flow-hop-pill">
+        <span class="flow-hop-arrow" set:html={`<svg viewBox="0 0 24 24" aria-hidden="true">${ARROW}</svg>`} />
+        {hopLabel && <span class="flow-hop-label">{hopLabel}</span>}
+        <code>{hop}</code>
+        {hopNote && <span class="flow-hop-note">{hopNote}</span>}
+      </span>
+    </div>
+  )}
+</section>
+
+<style>
+  /* 竖线的位置：圆点 1.75rem 宽，线在它正中 */
+  .flow { --dot: 1.75rem; --rail: calc(var(--dot) / 2 - 0.5px); --indent: 2.75rem; margin-top: 1.5rem }
+  .flow + .flow { margin-top: 0 }
+  /* Starlight 给正文里相邻的块加 1rem 上边距，竖线会在区段标题和第一步、胶囊和下一段之间断开 */
+  .flow > * + * { margin-top: 0 }
+
+  .flow-zone { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 0.25rem 0.6rem; padding-bottom: 0.9rem }
+  .flow-zone::after { content: ''; position: absolute; left: var(--rail); top: var(--dot); bottom: 0; width: 1px; background: var(--line-strong) }
+  .flow-icon {
+    display: grid; place-items: center; flex: none; width: var(--dot); height: var(--dot); border-radius: 0.5rem;
+    color: var(--diagram-hl); background: var(--diagram-hl-bg);
+  }
+  .flow-icon :global(svg), .flow-hop-arrow :global(svg) { width: 0.95rem; height: 0.95rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round }
+  .flow-zone-label { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--sl-color-white) }
+  .flow-zone-sub { font-family: var(--sl-font-mono); font-size: var(--fs-xs); color: var(--sl-color-gray-3) }
+
+  .flow-steps :global(ol) { list-style: none; margin: 0; padding: 0 }
+  .flow-steps :global(ol > li) { position: relative; margin: 0; padding: 0 0 1.35rem var(--indent) }
+  .flow-steps :global(ol > li + li) { margin-top: 0 }
+  /* 编号圆点：list-item 是浏览器自带的计数器，认 <ol start> */
+  .flow-steps :global(ol > li)::before {
+    content: counter(list-item); position: absolute; left: 0; top: 0;
+    display: grid; place-items: center; width: var(--dot); height: var(--dot); border-radius: 999px;
+    font-family: var(--sl-font-mono); font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--sl-color-gray-2);
+    background: var(--sl-color-bg); box-shadow: inset 0 0 0 1px var(--line-strong);
+  }
+  .flow-steps :global(ol > li)::after { content: ''; position: absolute; left: var(--rail); top: calc(var(--dot) + 0.3rem); bottom: 0.3rem; width: 1px; background: var(--line-strong) }
+  .flow-steps:not([data-hop]) :global(ol > li:last-child) { padding-bottom: 0 }
+  .flow-steps:not([data-hop]) :global(ol > li:last-child)::after { content: none }
+  .flow-steps[data-hop] :global(ol > li:last-child)::after { bottom: 0 }
+
+  /* 第一段：短名字 + 文件 */
+  .flow-steps :global(li > p) { margin: 0 }
+  .flow-steps :global(li > p:first-child) {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.5rem; min-height: var(--dot); margin-bottom: 0.3rem;
+  }
+  .flow-steps :global(li > p:first-child strong) { margin-right: 0.15rem; font-size: var(--fs-base); font-weight: var(--fw-semibold); color: var(--sl-color-white) }
+  .flow-steps :global(li > p:first-child a) {
+    /* 不能是 inline-flex：flex 子项默认 min-width: auto，长路径会把手机屏幕撑宽（实测 390 宽时页面变成 466） */
+    display: inline-block; max-width: 100%; padding: 0.1rem 0.5rem; border-radius: 0.4rem;
+    font-family: var(--sl-font-mono); font-size: var(--fs-xs); line-height: var(--lh-snug); color: var(--sl-color-gray-2);
+    text-decoration: none; background: var(--sl-color-gray-6); box-shadow: inset 0 0 0 1px var(--line);
+    overflow-wrap: anywhere; transition: color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .flow-steps :global(li > p:first-child a:hover) { color: var(--sl-color-accent-high); box-shadow: inset 0 0 0 1px var(--sl-color-accent) }
+  .flow-steps :global(li > p:first-child a code) { padding: 0; font-size: inherit; color: inherit; background: none; border: 0; overflow-wrap: anywhere; white-space: normal }
+  /* 说明 */
+  .flow-steps :global(li > p + p) { margin-top: 0.35rem }
+  .flow-steps :global(li > p:not(:first-child)) { font-size: var(--fs-sm); line-height: var(--lh-body); color: var(--sl-color-gray-2) }
+
+  /* 强调的那一步 */
+  .flow-steps :global(li.flow-hl)::before { color: var(--sl-color-black); background: var(--diagram-hl); box-shadow: 0 0 0 4px var(--diagram-hl-bg) }
+  .flow-steps :global(li.flow-hl > p:first-child strong) { color: var(--diagram-hl) }
+
+  /* 区段之间的连接：虚线接着往下走，中间一枚写着协议的胶囊 */
+  .flow-hop { position: relative; padding: 0.15rem 0 1.25rem var(--indent) }
+  .flow-hop::before { content: ''; position: absolute; left: var(--rail); top: 0; bottom: 0; border-left: 1px dashed var(--diagram-hl) }
+  .flow[data-back] { margin-bottom: 1.75rem }
+  .flow[data-back] .flow-hop { padding-bottom: 0 }
+  .flow[data-back] .flow-hop::before { bottom: 50% }
+  .flow-hop-pill {
+    display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0.25rem 0.5rem; max-width: 100%;
+    padding: 0.3rem 0.75rem; border-radius: 0.6rem; font-size: var(--fs-xs); color: var(--diagram-hl);
+    background: var(--diagram-hl-bg); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--diagram-hl) 30%, transparent);
+  }
+  .flow-hop-arrow { display: grid }
+  .flow-hop-label { font-weight: var(--fw-semibold) }
+  .flow-hop-note { color: var(--sl-color-gray-2) }
+  .flow-hop-pill code { min-width: 0; padding: 0; font-size: inherit; color: inherit; background: none; border: 0; overflow-wrap: anywhere }
+</style>

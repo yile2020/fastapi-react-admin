@@ -333,7 +333,7 @@ README、文档站首页和分享卡片（`og.png`）用的是同一批图，界
 
 - 文字在 `src/data/architecture.ts`（中英文各一份），页面里只写一行 `<DiagramArchitecture {...architecture.zh} />`。
   🔴 **别把 props 直接写进 MDX**：`src/lib/markdown.ts` 导出给 AI 读的 `.md` 时只去掉**独占一行**的组件标签，跨多行的 props 会原样漏进 `.md` 和 `llms-full.txt`
-  （`guides/project-structure.mdx` 的 `DiagramRequestFlow` 现在就是这样漏的）。实测：改成一行之后 `/getting-started/introduction.md` 的这一节只剩说明文字
+  （`guides/project-structure.mdx` 的 `DiagramRequestFlow` 原来就这样漏过，2026-11-27 也挪进了 `src/data/request-flow.ts`）。**一行的标签里属性值也不能带 `>`**：去标签的正则是 `[^>]*`，`hop="Bearer <token>"` 会让整行留在 `.md` 里（实测踩过）。实测：改成一行之后 `/getting-started/introduction.md` 的这一节只剩说明文字
 - 每个模块都对着真实目录写：`apps/*`、`packages/*`、`backend/app/admin/api/v1/{auth,sys,log,monitor}`、`backend/app/task`、`backend/plugin/*`（以 `plugin.toml` 的 summary 为准）、
   `backend/common/*`、`apps/web/nginx.conf`。**加了 / 删了模块或插件时回来改 `architecture.ts`** —— 图和代码对不上没有任何检查会红
 - ⚠️ `.md` 改名成 `.mdx` 后，开着的 `astro dev` 会报「slug 在侧边栏配置里不存在」、页面 500：内容缓存没跟上，重启 dev 就好，构建不受影响
@@ -341,13 +341,17 @@ README、文档站首页和分享卡片（`og.png`）用的是同一批图，界
 ## 开发指南的「技术架构与项目结构」页（`guides/project-structure.mdx`）
 
 跟着用户列表这一次请求（`GET /api/v1/sys/users`）从路由文件走到数据库，再给一张「想改什么去哪找」的表。
-开头那张流向图是 `src/components/DiagramRequestFlow.astro`，文字全走 props，中英文各传各的。
+开头那张流向图是 `src/components/DiagramRequestFlow.astro`，文字在 `src/data/request-flow.ts`（中英文各一份），页面里只写一行展开 props。
 
 - 表里每个文件都写成指向 `main` 的完整 GitHub 链接 —— `check-links.mjs` 会离线核对路径在不在，文件挪了构建就红。
   **所以别把路径写成不带链接的行内代码**，那样挪了目录没人知道
 - ⚠️ 链接只保证「文件还在」，不保证「说的还对」：符号名（`usersQuery`、`get_users_paginated`、`DataScopedCRUD`、
   `resolveEnvelope`、`stringify_unsafe_ints`）和权限码 `sys:user:list` 是 2026-11-11 逐个 grep 核对过的，重构这条链路时回来改这一页
 - 刻意没写行号（会漂），也没写路由守卫用的是哪个权限码
+- 「一次请求的链路」那十步是 `src/components/FlowSteps.astro`（2026-11-27 从表格改的：用户说表格看不出先后）。**步骤写在 MDX 正文里的有序列表**，组件只排版，
+  所以导出给 AI 的 `.md` 里这一节是完整的列表；改成 props 传数据的话 `.md` 里只剩空白。每步第一段是「**短名字** [`文件`](链接)」，后面是说明
+- ⚠️ 两位数编号（`10.`）的续行要缩进 **4** 个空格，缩 3 个的话说明会掉出列表、变成列表外面的一段（实测踩过）
+- ⚠️ 文件小标签不能用 `inline-flex`：flex 子项默认 `min-width: auto`，长路径不换行，手机 390 宽时页面被撑到 466（实测）
 
 ## 顶栏：首页是两块咬合的榫卯，内页是通栏（2026-11-11）
 
