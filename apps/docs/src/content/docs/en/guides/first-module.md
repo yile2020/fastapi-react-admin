@@ -1000,7 +1000,7 @@ import { QueryBar, countActive, type FilterField } from '@admin/ui/components/qu
 import { Can } from '../../auth/can'
 import { ConfirmDialog } from '../../shell/confirm-dialog'
 import { PageHeader } from '../../shell/page-header'
-import { PageShell } from '../_shared/page-shell'
+import { ListBody, PageShell } from '../_shared/page-shell'
 import { BulkBar, RefreshButton, ResetButton } from '../_shared/filters'
 import { listState } from '../_shared/list-query'
 import { DEFAULT_PAGE_SIZE } from '../_shared/pagination'
@@ -1135,7 +1135,7 @@ export function CustomerPage({
     <PageShell fill="always">
       <PageHeader title={t('客户管理')} description={t('维护客户档案；能看到哪些客户由数据权限决定。')} />
 
-      <div className="flex flex-col gap-4 content-scroll:min-h-0 content-scroll:flex-1">
+      <ListBody>
         <QueryBar
           fields={FIELDS}
           value={q.value}
@@ -1193,7 +1193,7 @@ export function CustomerPage({
             }}
           />
         </div>
-      </div>
+      </ListBody>
 
       <CustomerFormSheet open={sheetOpen} onOpenChange={setSheetOpen} editing={editing} />
 
@@ -1330,8 +1330,9 @@ import { DictSelect, DictTag } from "../_shared/dict"
 ```
 
 - The endpoint it reads needs **sign-in only**, not dictionary-management permission; a value the dictionary doesn't have (item disabled or deleted) shows as a grey raw value, and when loading fails the tag can be clicked to retry
+- 🔴 **Once `level` comes from the dictionary, drop `le=2` from the step 3 schema** and keep only `ge=0`: when operators add a fourth item, a backend still limited to 0–2 rejects it with 422
 - 🔴 **Don't use it for values tied to a backend enum.** `status` above (0 disabled / 1 normal) is validated by the backend's `StatusType`; changing the dictionary doesn't change the backend, so keep `StatusBadge`
-- To **ship the items with the code**, do what step 7 does for menus: add them to both the seed SQL and a data migration (`utils/data_migration.py` only has the generic `insert_if_absent`, no dictionary-specific helper); to try it in your own environment, just create them in the UI
+- To **ship the items with the code**, do what step 7 does for menus: add them to both the seed SQL (`init_snowflake_test_data.sql`, the same file as the menus) and a data migration (`utils/data_migration.py` only has the generic `insert_if_absent`, no dictionary-specific helper); to try it in your own environment, just create them in the UI
 - This subsection has not been run against this page's "customer" example: there `level` is still three values hard-coded in the page. The tests and browser checks of the dictionary-reading layer itself are in [`pages/_shared/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/_shared/AGENTS.md)
 
 ## 9. Apply data scopes
@@ -1365,17 +1366,7 @@ When an `__ALL__` rule meets a table without the matching column, that rule is s
 
 ## 10. Write tests
 
-First add the new app's tests to `testpaths` in `apps/api/pyproject.toml`. Otherwise `pnpm test` does not collect them, and nothing tells you:
-
-```toml
-testpaths = [
-  "backend/app/admin/tests",
-  "backend/app/task/tests",
-  "backend/app/crm/tests",
-  "backend/plugin",
-  "backend/tests"
-]
-```
+Tests under `backend/app/crm/tests/` are collected by `pnpm test`: `testpaths` in `apps/api/pyproject.toml` uses the wildcard `backend/app/*/tests`, so you don't edit it. Tests anywhere else (for example `test_*.py` in the app's root) are not collected, and nothing tells you.
 
 `apps/api/backend/app/crm/tests/test_customer.py` (with an empty `__init__.py` next to it):
 
@@ -1504,7 +1495,7 @@ cd apps/api && uv run --no-sync pytest \
 | The list shows "no data" when the request failed | `listState()` was not used and `error` was dropped. Spread `{...list}` into `DataTable` |
 | Menus marks the entry as a dead link | The menu's `path` does not match the frontend route path. The route file and `page-registry.tsx` also have to come in pairs; `pnpm arch:check` checks the registry |
 | `pnpm i18n:check` reports `missing-keys` | New strings were not added to both locale files |
-| You wrote tests and `pnpm test` is green, but they never ran | The new app's `tests/` directory is not in `testpaths` in `pyproject.toml` |
+| You wrote tests and `pnpm test` is green, but they never ran | The tests are not under `backend/app/<app>/tests/`. `testpaths` only matches that level, so tests in the app's root or another subdirectory are not collected |
 | After splitting the module into a new workspace package, the production image build fails with `Cannot find module` | Only an alias / tsconfig path was added; the package was not declared in the dependent's `package.json`. `pnpm arch:check` checks this |
 
 ## Source code

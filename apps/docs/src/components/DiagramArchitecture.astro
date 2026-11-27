@@ -13,26 +13,27 @@ import logo from '../assets/logo.svg'
 type IconName =
   | 'monitor' | 'laptop' | 'phone' | 'package' | 'server' | 'zap' | 'key'
   | 'settings' | 'lock' | 'file' | 'clock' | 'activity' | 'database' | 'layers' | 'drive' | 'puzzle'
-interface Card { title: string; code: string; icon: IconName; tags: string[]; core?: boolean }
-interface Bar { label: string; tags: string[] }
+// 数组都写 readonly：数据在 src/data/architecture.ts 里是 `as const`，可变数组类型接不住它
+interface Card { title: string; code: string; icon: IconName; tags: readonly string[]; core?: boolean }
+interface Bar { label: string; tags: readonly string[] }
 interface Layer {
   index: string
   label: string
   sub: string
-  cards: Card[]
+  cards: readonly Card[]
   /** 第一张卡片竖跨两行、其余排在右边两列（应用层用：sys 的能力最多，5 个模块正好排满 3 × 2） */
   feature?: boolean
   /** 到下一层的请求怎么走（箭头旁边那行字）；最后一层不写 */
   flow?: string
-  bars?: Bar[]
-  plugins?: { label: string; items: { code: string; title: string }[] }
+  bars?: readonly Bar[]
+  plugins?: { label: string; items: readonly { code: string; title: string }[] }
 }
 interface Props {
   label: string
   brand: string
   title: string
   legend: { core: string; plugin: string; flow: string }
-  layers: Layer[]
+  layers: readonly Layer[]
   caption: string
   url: string
 }

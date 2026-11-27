@@ -75,7 +75,7 @@ docker exec fba_mssql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$PW" 
 ⚠️ **报告只在跑整套时出现。** `pytest -k foo` 或指定文件时不打 —— 那时
 「没打到」不等于「没测试」，报出来就是谎报一片空缺。判断用的是
 `config.invocation_params.args`（真实命令行），**不是 `config.args`** ——
-后者被 `pyproject.toml` 的 `testpaths` 填满了四个目录，拿它判断会把整套也
+后者被 `pyproject.toml` 的 `testpaths` 填满了那几个目录，拿它判断会把整套也
 误判成局部，于是报告永远不出现（实测：全绿但一个字都不打）。
 
 ⚠️ 输出用 `pytest_terminal_summary`，**不是 `pytest_sessionfinish`** ——
