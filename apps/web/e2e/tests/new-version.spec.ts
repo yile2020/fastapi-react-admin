@@ -10,9 +10,16 @@ import { expect, test } from "../fixtures/base"
  * ⚠️ `version.json` 是构建产物：开发服务器上没有，而 CI 的 E2E 跑在构建产物上（见 `playwright.config.ts`
  * 的 `PREVIEW`），有。所以要「取不到」的那两条自己把它拦成 404，不依赖前端是哪种方式起的；
  * 构建时 buildId 钉成 `"dev"`，和开发期编译进去的值一样。
+ *
+ * 「取不到」在 `fetchServed()` 里是两条不同的分支，各留一条用例：404 走 `!res.ok`；
+ * 200 但回的是 HTML（开发服务器把不存在的路径回落成 index.html 就是这样）走 `res.json()` 抛错。
  */
 const versionJsonMissing = (page: import("@playwright/test").Page) =>
   page.route("**/version.json", (route) => route.fulfill({ status: 404, body: "" }))
+const versionJsonIsHtml = (page: import("@playwright/test").Page) =>
+  page.route("**/version.json", (route) =>
+    route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>x</title>" }),
+  )
 
 test.describe("新版本提示", () => {
   test("服务端 buildId 变了 → 弹一张带「立即刷新」的卡片，显示新旧版本号", async ({ authedPage: page }) => {
@@ -103,7 +110,7 @@ test.describe("新版本提示", () => {
   })
 
   test("拿不到 version.json（开发期就是这样）不能弹提示", async ({ authedPage: page }) => {
-    await versionJsonMissing(page)
+    await versionJsonIsHtml(page)
     await page.goto("/dashboard")
     await expect(page.getByTestId("dash-greeting")).toBeVisible()
     await expect(page.getByTestId("toast")).toHaveCount(0)

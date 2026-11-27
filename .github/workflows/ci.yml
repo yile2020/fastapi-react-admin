@@ -60,6 +60,17 @@ jobs:
       - name: build
         run: pnpm build
 
+      # `src/main.tsx` 里有一个只给 E2E 用的 `window.__e2e`（拿得到内存里的 access token），
+      # 靠 `VITE_E2E_HOOKS` 在构建期整段删掉。这里核对「不设那个变量的构建里确实没有它」，
+      # 不然那条保证只是一句注释。E2E 自己的构建写在 `dist-e2e`，不在这里。
+      - name: 生产构建里不能有 E2E 钩子
+        run: |
+          test -f apps/web/dist/index.html
+          if grep -rl "__e2e" apps/web/dist; then
+            echo "::error::apps/web/dist 里出现了 window.__e2e：这个钩子只能存在于 VITE_E2E_HOOKS=1 的构建"
+            exit 1
+          fi
+
       # 两个脚本缺一个都会漏：check 管 t('…') 的 key 有没有进语言包，
       # jsx 管压根没进 t() 的裸中文
       - name: i18n
