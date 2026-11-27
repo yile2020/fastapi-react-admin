@@ -382,8 +382,8 @@ pnpm ctx:check          # 死引用 / 死链接 / 死脚本 / 死 testid / 行�
 | `anonymous-title` | 错误 | H1 里没出现自己的目录名 |
 | `budget` | 警告 | 根文件 > 400 行 / 分册 > 500 行 —— 该拆了 |
 
-覆盖 **45 份**文档：`CLAUDE.md` / `AGENTS.md` 之外，还有 `README.md` /
-`CONTRIBUTING.md` / `SECURITY.md` / `PORTING.md` / PR 模板。⚠️ 后面那几个是**后来才加进来的** ——
+覆盖 **75 份**文档（2026-11-26）：`CLAUDE.md` / `AGENTS.md` 之外，还有 `README.md` /
+`CONTRIBUTING.md` / `SECURITY.md` / `PORTING.md` / PR 模板 / 技能 `.claude/skills/*/SKILL.md`。⚠️ 后面那几个是**后来才加进来的** ——
 在那之前它们完全不在覆盖范围，而一次人工梳理就从里面翻出三条过期断言
 （推荐了已被硬纪律否掉的命令 · Playwright 条数停在 44（实际 54）· 闸门清单少两道门）。
 **新增一类文档时先问一句「ctx:check 扫得到它吗」。**
