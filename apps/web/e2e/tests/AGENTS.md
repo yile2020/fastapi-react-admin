@@ -30,9 +30,12 @@ await page.route(/\/api\/v1\/sys\/users\?/, (route) => route.fulfill({ status: 5
 放行改用 `route.fallback()`（试重试按钮时要让第二次请求真的打到后端）。
 
 `new-version.spec.ts` 同理：「服务端发新版了」这件事在一条测试里没法真的发生，
-只能给 `/version.json` 换一个 `buildId`。它还顺带验了一条**真实的开发期行为** ——
-开发服务器上根本没有 `version.json`（那是构建产物），拿不到**不能**被当成发新版，
-所以第二条断言是「不弹提示」。
+只能给 `/version.json` 换一个 `buildId`。「拿不到 `version.json` **不能**被当成发新版」那两条
+也是自己拦出来的（一条 404、一条 200 但回 HTML）：开发服务器上没有这个文件，CI 跑的构建产物上有，
+不拦的话同一条用例在两边测的不是一回事。
+
+🔴 **CI 的 E2E 跑的是构建产物，不是开发服务器**，用例拿应用内部对象只能走 `window.__e2e` ——
+见 [`apps/web` 分册](../../AGENTS.md)的「E2E 用的构建」。
 
 加上 **`data-permission.spec.ts`（29 条 / 19 个账号）**——见上一节。
 

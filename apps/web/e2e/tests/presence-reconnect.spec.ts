@@ -36,12 +36,14 @@ async function openPresence(page: Page) {
 
 async function rejectNextHandshake(page: Page) {
   await page.evaluate(async () => {
-    const url = performance
-      .getEntriesByType("resource")
-      .map((e) => e.name)
-      .find((n) => n.includes("/api-client/token-store.ts"))
-    if (!url) throw new Error("token store was not loaded")
-    const { tokenStore } = await import(/* @vite-ignore */ url)
+    // The app's own token store, exposed only when the web server is started for E2E (see main.tsx).
+    const hooks = (
+      window as unknown as {
+        __e2e?: { tokenStore: { get(): string; set(token: string): void } }
+      }
+    ).__e2e
+    if (!hooks) throw new Error("window.__e2e is missing: VITE_E2E_HOOKS was not set")
+    const { tokenStore } = hooks
     const parts = tokenStore.get().split(".")
     // Preserve identity but invalidate the signature: the real server must reject it.
     parts[2] = "invalid-signature"
@@ -93,11 +95,16 @@ test("握手被拒后刷新真实会话，恢复推送并可重载 #325", async 
 
   // A connected marker alone cannot prove session:ended still reaches its handler.
   const session = await page.evaluate(async () => {
-    const url = performance
-      .getEntriesByType("resource")
-      .map((e) => e.name)
-      .find((n) => n.includes("/api-client/token-store.ts"))!
-    const { tokenStore } = await import(/* @vite-ignore */ url)
+    const { tokenStore } = (
+      window as unknown as {
+        __e2e: {
+          tokenStore: {
+            getUserId(): string | null
+            getSessionUuid(): string | null
+          }
+        }
+      }
+    ).__e2e
     return { userId: tokenStore.getUserId(), uuid: tokenStore.getSessionUuid() }
   })
   await api.del(
@@ -168,11 +175,13 @@ test("恢复在途时卸载外壳，不能重建旧 socket #325", async ({
     )
     // Exercise real session-expiry cleanup while recovery awaits a response.
     await page.evaluate(async () => {
-      const url = performance
-        .getEntriesByType("resource")
-        .map((e) => e.name)
-        .find((n) => n.includes("/api-client/client.ts"))!
-      const { endSession } = await import(/* @vite-ignore */ url)
+      const { endSession } = (
+        window as unknown as {
+          __e2e: {
+            endSession(end: { reason: string; message: string | null }): void
+          }
+        }
+      ).__e2e
       endSession({ reason: "logout", message: null })
     })
     await expect(page).toHaveURL(/sign-in/)

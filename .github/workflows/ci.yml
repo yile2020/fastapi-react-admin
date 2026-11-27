@@ -60,6 +60,17 @@ jobs:
       - name: build
         run: pnpm build
 
+      # `src/main.tsx` 里有一个只给 E2E 用的 `window.__e2e`（拿得到内存里的 access token），
+      # 靠 `VITE_E2E_HOOKS` 在构建期整段删掉。这里核对「不设那个变量的构建里确实没有它」，
+      # 不然那条保证只是一句注释。E2E 自己的构建写在 `dist-e2e`，不在这里。
+      - name: 生产构建里不能有 E2E 钩子
+        run: |
+          test -f apps/web/dist/index.html
+          if grep -rl "__e2e" apps/web/dist; then
+            echo "::error::apps/web/dist 里出现了 window.__e2e：这个钩子只能存在于 VITE_E2E_HOOKS=1 的构建"
+            exit 1
+          fi
+
       # 两个脚本缺一个都会漏：check 管 t('…') 的 key 有没有进语言包，
       # jsx 管压根没进 t() 的裸中文
       - name: i18n
@@ -153,7 +164,7 @@ jobs:
   # `ctx:check`）在上面的 static job 里，照跑。
   #
   # 🔴 **用 job 级的 `if` 跳，不要用 workflow 级的 `paths-ignore`。** 下面几个 job 里
-  # 有两个是 ruleset 要求的检查：job 因为 `if` 被跳过时会上报 skipped，ruleset 把它
+  # 的 pytest 和 E2E 都是 ruleset 要求的检查：job 因为 `if` 被跳过时会上报 skipped，ruleset 把它
   # 当作通过；整个 workflow 被 `paths` 过滤掉的话这些检查**根本不上报**，PR 永远卡在
   # 「等待必需的检查」上（和 static job 改名那次同一个症状）。
   #
@@ -167,11 +178,31 @@ jobs:
   # （`plugin/open/tests/test_open_signature.py` 核对 `plugin/open/README.md` 里的签名示例）。
   # 以后再有测试读 Markdown，就把那个目录也排除掉。
   # main 上的 push 永远全跑：`pages` 要把 E2E 报告和文档站一起发，跳了会把 /e2e/ 冲掉。
+  #
+  # 第二档 `backend_untouched`：改动全落在前端 / 文档里时，只跳 `pytest · SQL Server`
+  # （流水线里最慢的一个 job，7 分半），`pytest · PostgreSQL` 照跑。
+  #
+  # 🔴 **只能跳 SQL Server 那一条，不能两条 pytest 一起跳。** pytest 里有一批用例读的是
+  # 前端源码，纯前端的 PR 一样能把它们改红：`test_permission_codes.py` 扫 `packages/` 和
+  # `apps/web/src` 里的权限码、`test_secret_keys.py` / `test_dynamic_config_bounds.py` 读
+  # `packages/platform/src/pages/config/`、`test_data_change.py` 读 `packages/i18n/src`。
+  # 这些对账和方言无关，留一条 PostgreSQL 就守得住；而后端代码没动时，SQL Server 上的
+  # 方言行为也不会变，那一遍是重复的。E2E 的后端照旧是 SQL Server。
+  #
+  # 🔴 **这一档成立的前提是 `pytest · PostgreSQL` 在 ruleset 的必需检查里。** 它原来不在
+  # （必需的 pytest 只有 SQL Server 那条）：那样的话纯前端 PR 写错一个权限码，只有 PostgreSQL
+  # 那条红、而它不拦合并，SQL Server 那条 skipped 算通过，PR 能直接合。评审时发现的。
+  # 哪天把 PostgreSQL 从必需检查里拿掉，这一档要一起撤。
+  #
+  # 判据是**白名单**：只有每个文件都落在下面列出的前端 / 文档目录里才算没碰后端。
+  # `apps/api/`、`apps/worker/`、`.github/`、`deploy/`、`scripts/`、根目录的锁文件和
+  # 配置，以及以后新增的任何目录，都落进 `*)` 那一支 —— 认不出来的一律当作碰了后端。
   changes:
     name: 改动范围
     runs-on: ubuntu-latest
     outputs:
       docs_only: ${{ steps.diff.outputs.docs_only }}
+      backend_untouched: ${{ steps.diff.outputs.backend_untouched }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name == 'pull_request'
@@ -184,12 +215,14 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" != pull_request ]; then
             echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            echo "backend_untouched=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # --no-renames：把 apps/web/x 挪进 apps/docs/ 要同时看到删掉的那一头
           git diff --no-renames --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
           docs_only=true
-          [ -s "$RUNNER_TEMP/changed.txt" ] || docs_only=false
+          backend_untouched=true
+          [ -s "$RUNNER_TEMP/changed.txt" ] || { docs_only=false; backend_untouched=false; }
           # `|| [ -n "$f" ]`：最后一行没换行时 read 会返回失败、那一行被漏掉，漏掉的恰好可能是代码文件
           while IFS= read -r f || [ -n "$f" ]; do
             case "$f" in
@@ -198,16 +231,25 @@ jobs:
               *.md) ;;
               *) docs_only=false ;;
             esac
+            case "$f" in
+              apps/web/* | apps/mobile/* | apps/desktop/* | apps/docs/* | docs/* | packages/*) ;;
+              apps/api/*) backend_untouched=false ;;
+              *.md) ;;
+              *) backend_untouched=false ;;
+            esac
           done < "$RUNNER_TEMP/changed.txt"
           echo "改动的文件："
           cat "$RUNNER_TEMP/changed.txt"
           echo "docs_only=$docs_only"
           echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+          echo "backend_untouched=$backend_untouched"
+          echo "backend_untouched=$backend_untouched" >> "$GITHUB_OUTPUT"
 
   test-backend:
     name: pytest · SQL Server
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' }}
+    # `backend_untouched`：改动没碰后端时跳过，见上面 `changes` 的注释。PostgreSQL 那条不带这个条件
+    if: ${{ !cancelled() && needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.backend_untouched != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -348,7 +390,7 @@ jobs:
   # PostgreSQL 的平行 job（issue #5）。
   #
   # 🔴 **2026-09-08 起默认开发库换成了 PostgreSQL，但这个 job 仍然不是「取代」
-  # 上面的 `test-backend`。** 两条都是必跑的方言覆盖，结构刻意保持一一对应，
+  # 上面的 `test-backend`。** 两条都是方言覆盖（改动没碰后端的 PR 只跑这一条，见 `changes` 的注释），结构刻意保持一一对应，
   # 改一个记得看另一个——job id 本身没有改名，改名有弄丢 GitHub 分支保护
   # required checks 的风险，交给要动它的人自己决定。
   #
@@ -649,8 +691,9 @@ jobs:
         with:
           name: blob-report-${{ matrix.shard }}
           path: apps/web/blob-report/
-          # 只是合并用的中间产物，合好的 HTML 报告另存 7 天
-          retention-days: 1
+          # 和合好的 HTML 报告留一样久：隔天「只重跑失败的那一片」时，别的片的 blob 要是过期了，
+          # 合出来的报告就只剩一片的用例，而检查是绿的
+          retention-days: 7
           # 只重跑这一片时同一个 run_id 会再传一份同名 artifact，默认不覆盖
           overwrite: true
 
@@ -662,6 +705,7 @@ jobs:
   # ruleset 把 skipped 当通过。写 `!cancelled()` 的话，有人在分片跑到一半时手动取消这次运行，
   # 这个 job 就是 skipped —— 一套没跑完的 E2E 在必需检查上显示通过。`always()` 让它照样起来，
   # 由最后一步按分片的结果判红。纯文档 PR 照旧整个跳过（那是有意的通过）。
+  # 代价：被新 push 顶掉（`cancel-in-progress`）的那次运行，这个 job 也会起来、在旧提交上判一个红叉。
   e2e-report:
     name: playwright · E2E
     needs: [changes, test-e2e]
@@ -689,14 +733,22 @@ jobs:
           path: ${{ runner.temp }}/blob-reports
           merge-multiple: true
 
+      # 按 pattern 下载时一份都没匹配到也算成功，所以另外看一眼目录里到底有没有东西：
+      # 没有就不合并，免得红在「合并报告」这一步、把真正的原因（分片没跑起来）盖住
       - name: Merge into HTML report
-        if: steps.blobs.outcome == 'success'
+        id: merge
         working-directory: apps/web
-        run: pnpm exec playwright merge-reports --reporter html "$RUNNER_TEMP/blob-reports"
+        run: |
+          if ! ls "$RUNNER_TEMP"/blob-reports/*.zip > /dev/null 2>&1; then
+            echo "没有 blob 报告可合并"
+            exit 0
+          fi
+          pnpm exec playwright merge-reports --reporter html "$RUNNER_TEMP/blob-reports"
+          echo "merged=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: steps.blobs.outcome == 'success'
+        if: steps.merge.outputs.merged == 'true'
         with:
           name: playwright-report
           path: apps/web/playwright-report/
@@ -707,8 +759,9 @@ jobs:
           overwrite: true
 
       # `needs.test-e2e.result` 是四片合起来的结果：全过才是 success，有一片失败 / 取消 / 没跑都不是
+      # `always()`：前面哪一步红了这一步也要跑，把分片的结果说出来
       - name: 四个分片都要通过
-        if: needs.test-e2e.result != 'success'
+        if: ${{ always() && needs.test-e2e.result != 'success' }}
         run: |
           echo "::error::E2E 分片的结果是 ${{ needs.test-e2e.result }}，看上面名字带 (n/4) 的那几个 job"
           exit 1

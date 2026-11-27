@@ -14,10 +14,12 @@ test('跨账号刷新不能重放写请求，清理旧页面 #324', async ({ aut
   })
   const result = await page.evaluate(async () => {
     // Exercise the production client with an isolated failing endpoint.
-    const moduleUrl = performance.getEntriesByType('resource').map((entry) => entry.name)
-      .filter((name) => name.includes('/api-client/client.ts')).at(-1)
-    if (!moduleUrl) throw new Error('production API client was not loaded')
-    const { api } = await import(/* @vite-ignore */ moduleUrl)
+    // The app's own client, exposed only when the web server is started for E2E (see main.tsx).
+    const hooks = (window as unknown as {
+      __e2e?: { api: { PUT(path: string, init: { body: unknown }): Promise<unknown> } }
+    }).__e2e
+    if (!hooks) throw new Error('window.__e2e is missing: VITE_E2E_HOOKS was not set')
+    const { api } = hooks
     try {
       await api.PUT('/api/v1/identity-probe', { body: { name: 'old account draft' } })
       return 'replayed'

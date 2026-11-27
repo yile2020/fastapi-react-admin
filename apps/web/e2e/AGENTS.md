@@ -10,7 +10,7 @@
 
 `apps/web/e2e/`。选 Playwright 而不是 Vitest + jsdom + mock fetch，理由和后端测试
 是同一套哲学：backend 的 23 条测试打的是真实 SQL Server，不 mock 数据库；前端
-配套的自然选择是打真实 dev server + 真实接口，不是隔着一层 mock 测「我以为它会
+配套的自然选择是打真实的前端 + 真实接口（本地是 dev server，CI 是构建产物，见 [`apps/web` 分册](../AGENTS.md)），不是隔着一层 mock 测「我以为它会
 这样」。全站组件挂的 `data-testid`、硬纪律 5 讲的隐藏 tab 锁定规则，都是照着
 「以后会有 E2E」这个假设写的。
 
