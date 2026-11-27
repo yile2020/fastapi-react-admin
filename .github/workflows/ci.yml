@@ -153,7 +153,7 @@ jobs:
   # `ctx:check`）在上面的 static job 里，照跑。
   #
   # 🔴 **用 job 级的 `if` 跳，不要用 workflow 级的 `paths-ignore`。** 下面几个 job 里
-  # 有两个是 ruleset 要求的检查：job 因为 `if` 被跳过时会上报 skipped，ruleset 把它
+  # 的 pytest 和 E2E 都是 ruleset 要求的检查：job 因为 `if` 被跳过时会上报 skipped，ruleset 把它
   # 当作通过；整个 workflow 被 `paths` 过滤掉的话这些检查**根本不上报**，PR 永远卡在
   # 「等待必需的检查」上（和 static job 改名那次同一个症状）。
   #
