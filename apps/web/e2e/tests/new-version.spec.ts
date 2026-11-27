@@ -7,9 +7,13 @@ import { expect, test } from "../fixtures/base"
  * 这件事没法在一条测试里发生 —— 要么真去构建两次，要么让服务器报一个
  * 不一样的 buildId。这里用 `page.route` 直接给 `/version.json` 换个值。
  *
- * ⚠️ 开发服务器上**没有** `version.json`（它是构建产物），所以第二条断言
- * （404 不能被当成发新版）验的是真实的开发期行为，不是假设。
+ * ⚠️ `version.json` 是构建产物：开发服务器上没有，而 CI 的 E2E 跑在构建产物上（见 `playwright.config.ts`
+ * 的 `PREVIEW`），有。所以要「取不到」的那两条自己把它拦成 404，不依赖前端是哪种方式起的；
+ * 构建时 buildId 钉成 `"dev"`，和开发期编译进去的值一样。
  */
+const versionJsonMissing = (page: import("@playwright/test").Page) =>
+  page.route("**/version.json", (route) => route.fulfill({ status: 404, body: "" }))
+
 test.describe("新版本提示", () => {
   test("服务端 buildId 变了 → 弹一张带「立即刷新」的卡片，显示新旧版本号", async ({ authedPage: page }) => {
     await page.route("**/version.json", (route) =>
@@ -85,6 +89,7 @@ test.describe("新版本提示", () => {
   })
 
   test("懒加载分片取不到、version.json 也取不到 → 照样弹，只是没有版本行", async ({ authedPage: page }) => {
+    await versionJsonMissing(page)
     await page.goto("/dashboard")
     await expect(page.getByTestId("dash-greeting")).toBeVisible()
 
@@ -98,6 +103,7 @@ test.describe("新版本提示", () => {
   })
 
   test("拿不到 version.json（开发期就是这样）不能弹提示", async ({ authedPage: page }) => {
+    await versionJsonMissing(page)
     await page.goto("/dashboard")
     await expect(page.getByTestId("dash-greeting")).toBeVisible()
     await expect(page.getByTestId("toast")).toHaveCount(0)

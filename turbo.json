@@ -42,7 +42,8 @@
     "e2e": {
       "cache": false,
       "passThroughEnv": [
-        "E2E_SHARD"
+        "E2E_SHARD",
+        "E2E_PREVIEW"
       ]
     },
     "@admin/desktop#build": {
