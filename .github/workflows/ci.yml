@@ -660,8 +660,9 @@ jobs:
         with:
           name: blob-report-${{ matrix.shard }}
           path: apps/web/blob-report/
-          # 只是合并用的中间产物，合好的 HTML 报告另存 7 天
-          retention-days: 1
+          # 和合好的 HTML 报告留一样久：隔天「只重跑失败的那一片」时，别的片的 blob 要是过期了，
+          # 合出来的报告就只剩一片的用例，而检查是绿的
+          retention-days: 7
           # 只重跑这一片时同一个 run_id 会再传一份同名 artifact，默认不覆盖
           overwrite: true
 
@@ -673,6 +674,7 @@ jobs:
   # ruleset 把 skipped 当通过。写 `!cancelled()` 的话，有人在分片跑到一半时手动取消这次运行，
   # 这个 job 就是 skipped —— 一套没跑完的 E2E 在必需检查上显示通过。`always()` 让它照样起来，
   # 由最后一步按分片的结果判红。纯文档 PR 照旧整个跳过（那是有意的通过）。
+  # 代价：被新 push 顶掉（`cancel-in-progress`）的那次运行，这个 job 也会起来、在旧提交上判一个红叉。
   e2e-report:
     name: playwright · E2E
     needs: [changes, test-e2e]
@@ -700,14 +702,22 @@ jobs:
           path: ${{ runner.temp }}/blob-reports
           merge-multiple: true
 
+      # 按 pattern 下载时一份都没匹配到也算成功，所以另外看一眼目录里到底有没有东西：
+      # 没有就不合并，免得红在「合并报告」这一步、把真正的原因（分片没跑起来）盖住
       - name: Merge into HTML report
-        if: steps.blobs.outcome == 'success'
+        id: merge
         working-directory: apps/web
-        run: pnpm exec playwright merge-reports --reporter html "$RUNNER_TEMP/blob-reports"
+        run: |
+          if ! ls "$RUNNER_TEMP"/blob-reports/*.zip > /dev/null 2>&1; then
+            echo "没有 blob 报告可合并"
+            exit 0
+          fi
+          pnpm exec playwright merge-reports --reporter html "$RUNNER_TEMP/blob-reports"
+          echo "merged=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: steps.blobs.outcome == 'success'
+        if: steps.merge.outputs.merged == 'true'
         with:
           name: playwright-report
           path: apps/web/playwright-report/
@@ -718,8 +728,9 @@ jobs:
           overwrite: true
 
       # `needs.test-e2e.result` 是四片合起来的结果：全过才是 success，有一片失败 / 取消 / 没跑都不是
+      # `always()`：前面哪一步红了这一步也要跑，把分片的结果说出来
       - name: 四个分片都要通过
-        if: needs.test-e2e.result != 'success'
+        if: ${{ always() && needs.test-e2e.result != 'success' }}
         run: |
           echo "::error::E2E 分片的结果是 ${{ needs.test-e2e.result }}，看上面名字带 (n/4) 的那几个 job"
           exit 1
