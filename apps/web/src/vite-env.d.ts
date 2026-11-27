@@ -13,6 +13,9 @@ interface ImportMetaEnv {
   /** 这次构建出自哪个提交（7 位），取不到时是空串。见 `vite.config.ts` 的 `resolveCommit` */
   readonly VITE_GIT_SHA?: string
 
+  /** 只有 E2E 起的前端设成 `1`：在 `window.__e2e` 上挂 api 客户端和 token 仓库，见 `main.tsx` */
+  readonly VITE_E2E_HOOKS?: string
+
   /** 开发期显式设为 `true` 时挂载 TanStack Router Devtools，默认关闭。 */
   readonly VITE_ROUTER_DEVTOOLS?: string
 }

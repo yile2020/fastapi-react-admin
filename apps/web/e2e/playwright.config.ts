@@ -49,6 +49,9 @@ const PREVIEW = !!process.env.CI || process.env.E2E_PREVIEW === "1"
 const WEB_ENV = {
   // api-client 的 API_BASE 和 /uploads 代理目标都读这个变量，早就是可覆盖的
   VITE_API_BASE: `http://127.0.0.1:${API_PORT}`,
+  // 在 `window.__e2e` 上挂应用自己的 api 客户端和 token 仓库（见 `apps/web/src/main.tsx`）。
+  // 两种起法都设：用例只有一条取法，不分开发服务器还是构建产物
+  VITE_E2E_HOOKS: "1",
 }
 
 export default defineConfig({
