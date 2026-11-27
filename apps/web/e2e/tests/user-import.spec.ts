@@ -25,31 +25,64 @@ async function refs(api: ApiClient) {
   return { dept: depts[0].code, role: roles[0].code }
 }
 
-/** 收尾：把这批用户删掉。用接口的逻辑删除就够了——同名还能再建，不影响下一轮 */
+/**
+ * 收尾：把这批用户删掉。用接口的逻辑删除就够了——同名还能再建，不影响下一轮。
+ *
+ * 🔴 **必须放在 `finally` 里，而且自己不能抛。** 原来写在用例最后一行：一旦提交**之后**
+ * 的哪句断言先超时，人已经建进库、收尾却没跑到；重试时撞上的就是自己上一次留下的数据
+ * （#455：上一次的 `ann` 占着手机号 → 预览多出一行「手机号已被其他账号绑定」→ 计数断言红）。
+ * 收尾失败只吞掉不抛：它要是抛了，会把真正的失败原因盖住
+ */
 async function purge(api: ApiClient, usernames: string[]) {
   for (const username of usernames) {
-    const page = (await api.get(`/api/v1/sys/users?username=${username}`)) as {
-      items: Array<{ id: string; username: string }>
-    }
-    for (const u of page.items) {
-      if (u.username.startsWith(PREFIX)) await api.del(`/api/v1/sys/users/${u.id}`)
+    try {
+      const page = (await api.get(`/api/v1/sys/users?username=${username}`)) as {
+        items: Array<{ id: string; username: string }>
+      }
+      for (const u of page.items) {
+        if (u.username.startsWith(PREFIX)) await api.del(`/api/v1/sys/users/${u.id}`)
+      }
+    } catch {
+      // 尽力而为：用户名和手机号每次都带时间戳，残留不会撞上下一次
     }
   }
 }
 
+/**
+ * 每次尝试一个不重样的手机号（`138` + 毫秒时间戳末 8 位，过得了 `^1[3-9]\d{9}$`）。
+ *
+ * 🔴 不能写死：用户名带了 `stamp`、手机号没带的话，重试那一次用户名是新的、
+ * 手机号却还挂在上一次建出来的那个人身上 —— 「重试必然再挂」（#455）
+ */
+function uniquePhone(): number {
+  return Number(`138${String(Date.now()).slice(-8)}`)
+}
+
+/**
+ * 提交那一步的等待上限。
+ *
+ * CI 的 E2E 跑在 SQL Server 上（RCSI 关着），提交建号的事务会和并行 spec 收尾删用户的
+ * 事务互相等锁：#455 那次提交被挡了 4.4 秒（对面被选成死锁牺牲者 1205）、最终成功，
+ * 而默认 5 秒的断言超时先到了。提交是**页面自己**的请求，不经过 `api` 客户端的 1205 重发
+ */
+const COMMIT_TIMEOUT = 20_000
+
 test.describe("用户批量导入", () => {
   test("预览把三类问题各自指出来，提交只创建干净的那些", async ({ authedPage: page, api }) => {
+    // 提交最多等 COMMIT_TIMEOUT，再加前后两次整页加载，默认 30 秒的整条预算不够
+    test.slow()
     const { dept, role } = await refs(api)
     const stamp = Date.now().toString(36)
     const ann = `${PREFIX}${stamp}_ann`
     const bob = `${PREFIX}${stamp}_bob`
     const dup = `${PREFIX}${stamp}_dup`
+    const phone = uniquePhone()
 
     const rows: Cell[][] = [
       ["username", "nickname", "email", "phone", "dept_code", "role_codes", "备注列"],
       // 手机号刻意写成**数字** —— Excel 里直接打手机号就是这个形状，
       // 解析层要把它归一成纯数字串（裸 str() 会得到 '13800138001.0'）
-      [ann, "安", `${ann}@example.com`, 13800138001, dept, role, "随手写的备注"],
+      [ann, "安", `${ann}@example.com`, phone, dept, role, "随手写的备注"],
       [bob, "博", null, null, dept, role, null],
       // 库里已有：admin 一定存在
       ["admin", "撞名", null, null, dept, role, null],
@@ -60,97 +93,102 @@ test.describe("用户批量导入", () => {
       [null, null, null, null, null, null, null],
     ]
 
-    await page.goto("/system/user")
-    await page.getByTestId("user-table").waitFor()
-    await page.getByTestId("import-users").click()
-    await expect(page.getByTestId("user-import-sheet")).toBeVisible()
+    try {
+      await page.goto("/system/user")
+      await page.getByTestId("user-table").waitFor()
+      await page.getByTestId("import-users").click()
+      await expect(page.getByTestId("user-import-sheet")).toBeVisible()
 
-    await page.getByTestId("import-file-input").setInputFiles({
-      name: "users.xlsx",
-      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      buffer: buildXlsx(rows),
-    })
+      await page.getByTestId("import-file-input").setInputFiles({
+        name: "users.xlsx",
+        mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        buffer: buildXlsx(rows),
+      })
 
-    const sheet = page.getByTestId("user-import-sheet")
-    await expect(page.getByTestId("import-preview-table")).toBeVisible()
+      const sheet = page.getByTestId("user-import-sheet")
+      await expect(page.getByTestId("import-preview-table")).toBeVisible()
 
-    // 6 行数据（第 8 行是空行，被跳过）
-    await expect(page.getByTestId("import-preview-row")).toHaveCount(6)
-    await expect(sheet).toContainText("共 6 行")
-    await expect(sheet).toContainText("可导入 3 行")
-    await expect(sheet).toContainText("有问题 3 行")
-    await expect(sheet).toContainText("已跳过 1 个空行")
+      // 6 行数据（第 8 行是空行，被跳过）
+      await expect(page.getByTestId("import-preview-row")).toHaveCount(6)
+      await expect(sheet).toContainText("共 6 行")
+      await expect(sheet).toContainText("可导入 3 行")
+      await expect(sheet).toContainText("有问题 3 行")
+      await expect(sheet).toContainText("已跳过 1 个空行")
 
-    // 🔴 未识别的表头必须**说出来**：`备注列` 没被认领，它那一列的数据全丢了，
-    // 而整份文件照样解析成功——不说的话没有任何现象
-    await expect(sheet).toContainText("备注列")
+      // 🔴 未识别的表头必须**说出来**：`备注列` 没被认领，它那一列的数据全丢了，
+      // 而整份文件照样解析成功——不说的话没有任何现象
+      await expect(sheet).toContainText("备注列")
 
-    // 三类问题各自的原文。只断言「有 3 行有问题」是不够的：
-    // 三条走的是三条不同的代码路径（库内查重 / 文件内查重 / 编码解析），
-    // 任意一条坏掉，另外两条都能把计数凑够
-    const row = (n: number) => page.locator(`[data-testid="import-preview-row"][data-row-no="${n}"]`)
-    await expect(row(4)).toContainText("用户名已注册")
-    // 文件内重复报的是「和第几行重复」：用户要回 Excel 里两行对着看
-    await expect(row(6)).toContainText("和第 5 行重复")
-    await expect(row(7)).toContainText("NO_SUCH_DEPT")
+      // 三类问题各自的原文。只断言「有 3 行有问题」是不够的：
+      // 三条走的是三条不同的代码路径（库内查重 / 文件内查重 / 编码解析），
+      // 任意一条坏掉，另外两条都能把计数凑够
+      const row = (n: number) => page.locator(`[data-testid="import-preview-row"][data-row-no="${n}"]`)
+      await expect(row(4)).toContainText("用户名已注册")
+      // 文件内重复报的是「和第几行重复」：用户要回 Excel 里两行对着看
+      await expect(row(6)).toContainText("和第 5 行重复")
+      await expect(row(7)).toContainText("NO_SUCH_DEPT")
 
-    await page.getByTestId("confirm-import").click()
-    await expect(page.getByTestId("import-result")).toBeVisible()
-    await expect(page.getByTestId("import-result")).toContainText("新增 3 条")
-    // 没有强制首次改密的机制，这句提示是唯一的告知渠道
-    await expect(page.getByTestId("import-result")).toContainText("系统默认密码")
+      await page.getByTestId("confirm-import").click()
+      await expect(page.getByTestId("import-result")).toBeVisible({ timeout: COMMIT_TIMEOUT })
+      await expect(page.getByTestId("import-result")).toContainText("新增 3 条")
+      // 没有强制首次改密的机制，这句提示是唯一的告知渠道
+      await expect(page.getByTestId("import-result")).toContainText("系统默认密码")
 
-    // 真的进库了吗 —— 结果页说「成功」不等于列表里有
-    await page.getByTestId("import-done").click()
-    await page.goto(`/system/user?username=${ann}`)
-    // ⚠️ `{ exact: true }` 不能省：用户名也出现在**邮箱**里
-    // （`..._ann@example.com`），不精确匹配会撞两个元素 → strict mode violation
-    await expect(page.getByTestId("user-table").getByText(ann, { exact: true })).toBeVisible()
-
-    await purge(api, [ann, bob, dup])
+      // 真的进库了吗 —— 结果页说「成功」不等于列表里有
+      await page.getByTestId("import-done").click()
+      await page.goto(`/system/user?username=${ann}`)
+      // ⚠️ `{ exact: true }` 不能省：用户名也出现在**邮箱**里
+      // （`..._ann@example.com`），不精确匹配会撞两个元素 → strict mode violation
+      await expect(page.getByTestId("user-table").getByText(ann, { exact: true })).toBeVisible()
+    } finally {
+      await purge(api, [ann, bob, dup])
+    }
   })
 
   test("同一个 import_token 不能提交两次", async ({ authedPage: page, api }) => {
+    test.slow()
     // 🔴 不作废 token 的话，重放一次就是**重复建号**：第二次撞用户名唯一约束报
     // 「导入失败」，而库里已经多了第一批人。服务端在建号**之前**就把 token 删掉。
     const { dept, role } = await refs(api)
     const name = `${PREFIX}${Date.now().toString(36)}_once`
 
-    await page.goto("/system/user")
-    await page.getByTestId("user-table").waitFor()
-    await page.getByTestId("import-users").click()
+    try {
+      await page.goto("/system/user")
+      await page.getByTestId("user-table").waitFor()
+      await page.getByTestId("import-users").click()
 
-    // 把预览返回的**真** token 截下来 —— 这条用例的全部意义就是「拿用过的那个
-    // 再用一次」。换成一个瞎编的 token 只能测到「未知 token 被拒」，
-    // 那条路径就算把「提交前删 token」整个删掉也照样是绿的
-    const [previewRes] = await Promise.all([
-      page.waitForResponse((r) => r.url().includes("/sys/users/import/preview")),
-      page.getByTestId("import-file-input").setInputFiles({
-        name: "users.xlsx",
-        mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        buffer: buildXlsx([
-          ["username", "nickname", "dept_code", "role_codes"],
-          [name, "一次性", dept, role],
-        ]),
-      }),
-    ])
-    const token = ((await previewRes.json()) as { data: { import_token: string } }).data.import_token
-    expect(token).toBeTruthy()
+      // 把预览返回的**真** token 截下来 —— 这条用例的全部意义就是「拿用过的那个
+      // 再用一次」。换成一个瞎编的 token 只能测到「未知 token 被拒」，
+      // 那条路径就算把「提交前删 token」整个删掉也照样是绿的
+      const [previewRes] = await Promise.all([
+        page.waitForResponse((r) => r.url().includes("/sys/users/import/preview")),
+        page.getByTestId("import-file-input").setInputFiles({
+          name: "users.xlsx",
+          mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          buffer: buildXlsx([
+            ["username", "nickname", "dept_code", "role_codes"],
+            [name, "一次性", dept, role],
+          ]),
+        }),
+      ])
+      const token = ((await previewRes.json()) as { data: { import_token: string } }).data.import_token
+      expect(token).toBeTruthy()
 
-    await expect(page.getByTestId("import-preview-table")).toBeVisible()
-    await page.getByTestId("confirm-import").click()
-    await expect(page.getByTestId("import-result")).toContainText("新增 1 条")
+      await expect(page.getByTestId("import-preview-table")).toBeVisible()
+      await page.getByTestId("confirm-import").click()
+      await expect(page.getByTestId("import-result")).toContainText("新增 1 条", { timeout: COMMIT_TIMEOUT })
 
-    // 同一个 token 再打一次：必须被拒（`api.post` 对非 200 信封会抛）
-    await expect(
-      api.post("/api/v1/sys/users/import/commit", { import_token: token, exclude_rows: [] })
-    ).rejects.toThrow()
+      // 同一个 token 再打一次：必须被拒（`api.post` 对非 200 信封会抛）
+      await expect(
+        api.post("/api/v1/sys/users/import/commit", { import_token: token, exclude_rows: [] })
+      ).rejects.toThrow()
 
-    // 而且库里只有一个 —— 「被拒了」和「又建了一个」要分开验
-    const listed = (await api.get(`/api/v1/sys/users?username=${name}`)) as { total: number }
-    expect(listed.total).toBe(1)
-
-    await purge(api, [name])
+      // 而且库里只有一个 —— 「被拒了」和「又建了一个」要分开验
+      const listed = (await api.get(`/api/v1/sys/users?username=${name}`)) as { total: number }
+      expect(listed.total).toBe(1)
+    } finally {
+      await purge(api, [name])
+    }
   })
 
   test("非 xlsx 文件被挡住，并且说得出原因", async ({ authedPage: page }) => {
