@@ -11,6 +11,7 @@ import { logoutPending } from '@/lib/logout-pending'
 import { forgetServerCredentials, settleRevoke, startRevoke, switchServer as switchServerBase } from '@/lib/revoke'
 import { serverStore } from '@/lib/server'
 import { tokenStore } from '@/lib/token-store'
+import { clearSessionCache } from '@/lib/session-cache'
 
 type Status = 'loading' | 'authed' | 'anonymous'
 
@@ -96,7 +97,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
    * 既不刷新也不收尾（`packages/api` 分册「没带 token 发出去的请求撞上 401」），web 的登出也是这么清的
    */
   const applyAnonymous = React.useCallback(() => {
-    qc.clear()
+    // 不用 qc.clear()：检查新版本那份跟账号无关，清掉会让登录屏上的提示永远出不来（见 session-cache.ts）
+    clearSessionCache(qc)
     setDisplayTimeZone(null)
     setUser(null)
     setStatus('anonymous')

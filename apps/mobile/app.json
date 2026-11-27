@@ -2,7 +2,7 @@
   "expo": {
     "name": "中后台",
     "slug": "fastapi-react-admin-mobile",
-    "version": "0.0.1",
+    "version": "0.0.0-dev",
     "orientation": "portrait",
     "scheme": "fraadmin",
     "userInterfaceStyle": "automatic",

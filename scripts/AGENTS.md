@@ -13,6 +13,7 @@ deploy-prod.mjs      `pnpm deploy:prod:*` —— 生产部署编排
 check-main-head.mjs  发布前查询远端 main，阻止旧提交覆盖 latest / Pages
 release-gate.mjs     release.yml 的闸门：tag 的提交在 main 上且 CI 绿（预发布也一样），输出 prerelease
 latest-release-tag.mjs  ci.yml 迁移链守卫取基线：远端最高正式版 tag；读失败就红，不冒充「没有 tag」
+mobile-version.mjs   release.yml 安卓 job：tag 版本写进 app.json（含 versionCode）· 生成更新清单 latest-android.json（#460）
 loadtest.py          `pnpm loadtest` —— 对只读接口按并发压一段时间，报分位延迟
 ```
 

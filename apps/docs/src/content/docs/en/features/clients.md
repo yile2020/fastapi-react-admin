@@ -70,12 +70,24 @@ Locally: `pnpm --filter web build`, then `pnpm --filter @admin/desktop package`.
 - **Sign-in:** password or SMS code, both behind the image captcha; accounts with two-factor enter their code as a second step (someone required to enrol but not yet enrolled must do it on the web first). The access token is stored in `expo-secure-store` (Keystore / Keychain), never `AsyncStorage`. The refresh token stays in the httpOnly cookie; on Android, React Native's cookie jar sends it back automatically and keeps it across cold starts.
 - **Server address is set in the app** and stored on the device. Before saving, the app probes `/auth/captcha` to confirm the address is a reachable backend. The same `oklch()` colour tokens as the web app render pixel-identical on Android.
 
+## Mobile updates
+
+When a `v*` tag is pushed, the release pipeline uploads the Android installer `admin-mobile-<version>.apk` and an update manifest, `latest-android.json`, to the same GitHub Release as the desktop installers.
+
+- **In-app update check**: release builds on Android check once at startup and prompt when a newer version exists. "Download" opens the APK in the browser; open it when it finishes to install over the current app, keeping sign-in and settings. Settings → About has a "Check for updates" row for checking by hand; a failed check shows "Check failed, tap to retry", never "Up to date".
+- **Version from the tag**: written into `app.json` at build time, with `versionCode` derived from it so it always increases.
+- **Release signing**: tag builds re-sign the APK with the certificate in the repository secrets and fail if it is missing, so an APK signed with the public debug key is never published. Generate the certificate once and back it up: without it you can't ship an update that installs over the existing app. See [`apps/mobile/scripts/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/mobile/scripts/AGENTS.md).
+- **Self-hosting**: if GitHub is slow to reach (for example in mainland China) or you deploy on an internal network, put the APK and `latest-android.json` from the Release in one directory on your own server and point the repository variable `MOBILE_UPDATE_MANIFEST_URL` at that manifest when building. The manifest holds the APK's file name, which the app resolves next to the manifest.
+
+Not supported yet: downloading and installing from inside the app, and over-the-air updates of the JavaScript bundle (`expo-updates` needs a dedicated update server).
+
 ## Mobile limitations
 
 - Verified by hand on Android only (sign-in → permission gating → paging → detail → delete confirmation → toast). Newer screens, such as SMS sign-in and notice attachments, have so far passed only `tsc`, ESLint and the bundle build. **iOS has never been run.**
 - There are no automated mobile tests. The CI gate is `pnpm build`, which includes `expo export --platform android` and catches bundle-time failures only.
 - No real-time updates (no socket.io; screens refresh on open and pull-to-refresh). System push, QR scanning and silent printing are out of scope.
-- No published APK. `pnpm --filter @admin/mobile apk` has only been run as far as native module compilation, and it signs with the template's debug keystore; generate your own keystore before shipping.
+- Android only. iOS can't be distributed outside the App Store without a developer account, so there is no iOS build and the app doesn't check for updates there.
+- No release tag with an APK has been cut yet: the release pipeline is in place, but the signing certificate has to be added to the repository secrets first (see the previous section).
 - Changing the email address needs an email verification code, which only the web has; in the app the email is read-only. A phone number can be bound in the app's profile with an SMS code.
 
 To run it: `pnpm --filter api dev:host` (backend on `0.0.0.0:8088`), then `pnpm mobile:dev`, and open the printed `exp://…:8800` address in Expo Go for SDK 57.

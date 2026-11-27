@@ -59,3 +59,19 @@ test("建草稿只认 prerelease=true|false，拿不到闸门输出就失败", (
   assert.match(body, /case "\$PRERELEASE" in/)
   assert.match(body, /\*\)[^\n]*exit 1/)
 })
+
+// #460：安卓 job 的签名证书同样只给过了闸门的 tag 构建；清单要在 APK 之后传
+test("安卓签名证书按事件门控，清单最后传", () => {
+  const job = release.slice(release.indexOf("\n  android:"))
+  const uses = [...job.matchAll(/^\s*([A-Z0-9_]+):\s*\$\{\{(.*secrets\.ANDROID_.*)\}\}\s*$/gm)]
+  assert.equal(uses.length, 4, "四个安卓签名 secret 都应在「用正式证书签名」里")
+  for (const [, , expr] of uses) {
+    assert.match(expr.trim(), /^github\.event_name == 'push' && secrets\.ANDROID_[A-Z0-9_]+ \|\| ''$/, `没按事件门控：${expr}`)
+  }
+  assert.match(job, /needs: \[prepare\]\n\s+if: always\(\) && \(needs\.prepare\.result == 'success' \|\| github\.event_name == 'workflow_dispatch'\)/)
+  // 正式 tag 缺证书要红，不能回落到调试证书
+  assert.match(job, /没配 secret ANDROID_\$\{v\}[^\n]*\n\s+exit 1/)
+  const apk = job.indexOf('gh release upload "$GITHUB_REF_NAME" "$DIR"/*.apk')
+  const manifest = job.indexOf('gh release upload "$GITHUB_REF_NAME" "$DIR/latest-android.json"')
+  assert.ok(apk > 0 && manifest > apk, "latest-android.json 要在 APK 之后传")
+})

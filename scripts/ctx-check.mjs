@@ -125,6 +125,8 @@ const ALLOW = new Map(Object.entries({
   'latest-mac.yml': '同上，macOS 的更新清单',
   'latest-linux.yml': '同上，Linux 的更新清单',
   'app-update.yml': '同上，打包时写进安装包的 resources/',
+  'latest-android.json': 'release.yml 安卓 job 生成的手机端更新清单（#460），只在 GitHub Release 里，不进 git',
+  'releases/latest/download/latest-android.json': '同上，GitHub Release 的下载地址路径',
   'userData/config.json': '桌面端运行期在用户目录生成的配置',
   'config.json': '同上',
   'resources/': '桌面端放原生助手的目录，仓库里只有一个 .gitkeep —— 而这个扫描器跳过点开头的文件',

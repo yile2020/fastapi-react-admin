@@ -70,12 +70,24 @@ if (isDesktop()) {
 - **登录：** 密码和手机验证码两种方式，都要先过图形验证码；开了二次验证的账号第二步输动态码（被强制、还没绑定的人要先到网页端扫码绑定）。access token 存在 `expo-secure-store`（Keystore / Keychain），绝不放 `AsyncStorage`。refresh token 留在 httpOnly cookie 里：在 Android 上实测，React Native 自带的 cookie jar 会自动回传它，冷启动后依然有效。
 - **服务器地址在 App 里设置**，存在设备上。保存前会先探一次 `/auth/captcha`，确认这个地址确实是一个能连通的后端。颜色令牌与 web 端是同一份 `oklch()`，在 Android 上实测逐像素一致。
 
+## 移动端更新
+
+打 `v*` tag 时，发版流水线把 Android 安装包 `admin-mobile-<版本>.apk` 和更新清单 `latest-android.json` 传进同一个 GitHub Release，和桌面安装包放在一起。
+
+- **App 里检查新版本**：Android 正式包启动时查一次，有新版就弹提示，点「下载」用浏览器下载安装包，下载完点开覆盖安装，登录和设置都会保留。设置页「关于」里有一行「检查更新」，随时能手动查；检查失败会显示「检查失败，点按重试」，不会显示成「已是最新版本」。
+- **版本号取自 tag**：打包时写进 `app.json`，`versionCode` 由版本号算出，保证一路递增。
+- **正式签名**：正式 tag 用仓库 Secrets 里的签名证书重签，没配就让这一步失败，不会发出用公开调试证书签的包。证书只生成一次，丢了就发不出能覆盖安装的升级包，要另外备份。生成和配置方法见 [`apps/mobile/scripts/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/mobile/scripts/AGENTS.md)。
+- **自己托管**：国内访问 GitHub 不稳，或者在内网部署时，把 Release 里的 APK 和 `latest-android.json` 两个文件原样放到自己服务器的同一个目录，构建时把仓库变量 `MOBILE_UPDATE_MANIFEST_URL` 指向这份清单。清单里写的是 APK 的文件名，App 按清单所在目录找安装包。
+
+暂不支持应用内下载并直接安装，也不支持不重装就更新界面代码的热更新（`expo-updates` 需要专门的更新服务器）。
+
 ## 移动端限制
 
 - 只在 Android 上手工验收过（登录 → 权限门控 → 列表翻页 → 详情 → 删除确认 → toast）。较新的屏幕，比如手机验证码登录和公告附件，目前只过了 `tsc`、ESLint 和打包。**iOS 一次都没跑过。**
 - 移动端没有自动化测试。CI 的闸门是 `pnpm build`，其中包括 `expo export --platform android`，只能挡住打包阶段的失败。
 - 没有实时推送：没接 socket.io，进入页面或下拉时刷新。系统推送、扫码、静默打印明确不在范围内。
-- 还没有发布过 APK。`pnpm --filter @admin/mobile apk` 只跑到原生模块编译那一步，而且用的是模板自带的 debug keystore，正式发布前要换成自己的 keystore。
+- 只有 Android 安装包。iOS 没有开发者账号就不能在应用商店外分发，所以不出包、App 里也不检查更新。
+- 还没打过带 APK 的正式 tag：发版流水线已经接好，第一次发版前要先在仓库 Secrets 里配好正式签名证书（见上一节）。
 - 改邮箱要走邮件验证码，目前只有网页端有；App 里邮箱是只读的。手机号可以在 App 的个人中心用短信验证码绑定。
 
 本地跑起来：先 `pnpm --filter api dev:host`（后端绑 `0.0.0.0:8088`），再 `pnpm mobile:dev`，把打印出来的 `exp://…:8800` 地址填进 SDK 57 版的 Expo Go。
