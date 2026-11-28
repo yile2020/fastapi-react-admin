@@ -31,4 +31,32 @@ export const flows = {
       caption: 'Condition → approvers → approval repeats for every approval node until the tree ends. Sending back re-runs an earlier node',
     },
   },
+  /**
+   * packages/platform/src/upload/queue.ts 的 run()：hash → check（命中直接 done）→ upload（单次 / chunked.ts 分片）→ finalizing。
+   * 校验在服务端：file_service（/upload）和 multipart_service.start（分片开始）同一份；complete 再校验一遍
+   */
+  upload: {
+    zh: {
+      steps: [
+        { name: '算指纹', sub: '浏览器分块算 SHA-256' },
+        { name: '秒传探测', sub: '查有没有传过同一个文件', branch: { when: '已经传过', name: '直接复用', sub: '一个字节都不传', tone: 'ok' as const } },
+        { name: '服务端校验', sub: '扩展名 · 大小上限 · 公开件只收图片', branch: { when: '不通过', name: '上传失败', sub: '浮窗里显示原因' } },
+        { name: '传字节', sub: '小文件一次传完，大文件 3 片并发', branch: { when: '断网 · 刷新', name: '会话保留 24 小时', sub: '重试或重新选文件续传' } },
+        { name: '合并落库', sub: '分片读回合并，再校验一遍' },
+      ],
+      end: { name: '上传完成', sub: '出现在文件列表' },
+      caption: '小于分片阈值（默认 16 MiB）的文件没有「合并」这一步。多个文件逐个排队，同一个文件的分片并发',
+    },
+    en: {
+      steps: [
+        { name: 'Fingerprint', sub: 'The browser hashes SHA-256 in chunks' },
+        { name: 'Dedup check', sub: 'Has this exact file been uploaded?', branch: { when: 'Already there', name: 'Reused', sub: 'Not a single byte is sent', tone: 'ok' as const } },
+        { name: 'Server checks', sub: 'Extension · size limit · public = images only', branch: { when: 'Fails', name: 'Upload failed', sub: 'Reason shown in the tray' } },
+        { name: 'Send bytes', sub: 'Small files in one request, large ones 3 parts at a time', branch: { when: 'Offline · reload', name: 'Session kept 24 h', sub: 'Retry, or pick the file again to resume' } },
+        { name: 'Assemble', sub: 'Parts read back, joined, checked again' },
+      ],
+      end: { name: 'Done', sub: 'Shows up in the file list' },
+      caption: 'Files below the chunking threshold (16 MiB by default) skip the assemble step. Files queue one after another; parts of one file go in parallel',
+    },
+  },
 }
