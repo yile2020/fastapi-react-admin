@@ -391,4 +391,31 @@ export const flows = {
       caption: 'Appearance (theme colour, radius, density, tab style) is stored in the browser and does not follow the account; only the dashboard layout and time zone live on the server',
     },
   },
+  /**
+   * packages/platform/src/shell：tab-store.ts open()（key = routeId + params，MAX_TABS 20，pickVictim 淘汰 lastUsed 最小的非固定页签）
+   * → tab-outlet.tsx 每页一个 <Activity>（hidden 保留 DOM 与 state、销毁 effect）· 每页一道 TabErrorBoundary
+   * → sessionStorage admin:tabs 存 href 与 search，刷新后按它恢复；内存状态不恢复
+   */
+  tabs: {
+    zh: {
+      steps: [
+        { name: '打开页面', sub: '同一个页面只开一个页签', branch: { when: '已满 20 个', name: '关掉最久没用的', sub: '固定的页签不会被关' } },
+        { name: '切到别处', sub: '页面藏起来，不卸载', branch: { when: '这一页出错', name: '只换掉这一页', sub: '别的页签不受影响' } },
+        { name: '切回来', sub: '表单、展开、滚动原样都在' },
+        { name: '刷新浏览器', sub: '内存清空', branch: { when: '没提交的输入', name: '丢失', sub: '刷新前先保存' } },
+      ],
+      end: { name: '按地址恢复', sub: '每个页签带着筛选和分页回来' },
+      caption: '后台页签的轮询、定时器会暂停，切回来再继续；后台请求返回时不会把你拽回那一页',
+    },
+    en: {
+      steps: [
+        { name: 'Open a page', sub: 'One tab per page', branch: { when: 'Already 20', name: 'Least recently used closes', sub: 'Pinned tabs never do' } },
+        { name: 'Switch away', sub: 'The page is hidden, not unmounted', branch: { when: 'This page crashes', name: 'Only it is replaced', sub: 'Other tabs are fine' } },
+        { name: 'Switch back', sub: 'Forms, expansion and scroll intact' },
+        { name: 'Browser refresh', sub: 'Memory is cleared', branch: { when: 'Unsaved input', name: 'Lost', sub: 'Save before refreshing' } },
+      ],
+      end: { name: 'Restored from URLs', sub: 'Each tab returns with its filters and page' },
+      caption: "Background tabs pause polling and timers until you return; a request finishing in a background tab never pulls you back to it",
+    },
+  },
 }
