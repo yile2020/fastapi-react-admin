@@ -418,4 +418,30 @@ export const flows = {
       caption: "Background tabs pause polling and timers until you return; a request finishing in a background tab never pulls you back to it",
     },
   },
+  /**
+   * packages/api/scripts/gen.mjs（import 后端应用取 OpenAPI，离线）→ schema.d.ts → 移动端按它推断类型、网页端 api.GET<T>(string) 手写
+   * → CI：typecheck · lint · arch:check · i18n:check · ctx:check（根 CLAUDE.md 硬纪律 12 / 13）
+   */
+  contract: {
+    zh: {
+      steps: [
+        { name: '改后端接口', sub: '字段 · 路径 · 参数' },
+        { name: '生成契约', sub: 'pnpm --filter @admin/api gen:api', branch: { when: '忘了跑', name: '类型还是旧的', sub: '检查不出问题' } },
+        { name: '类型检查', sub: 'pnpm typecheck --force', branch: { when: '网页端调用', name: '查不出来', sub: '返回类型是手写的' } },
+        { name: '其余闸门', sub: 'lint · arch · i18n · ctx', branch: { when: '有一项不过', name: 'CI 变红', sub: '本地先跑一遍' } },
+      ],
+      end: { name: '可以合并', sub: '移动端已被类型兜住' },
+      caption: '不加 --force 时，turbo 缓存命中会打印上一次的结果：可能报一个早已修掉的错，也可能漏掉新错',
+    },
+    en: {
+      steps: [
+        { name: 'Change an API', sub: 'Fields · paths · parameters' },
+        { name: 'Generate contract', sub: 'pnpm --filter @admin/api gen:api', branch: { when: 'Forgotten', name: 'Types stay stale', sub: 'Nothing gets flagged' } },
+        { name: 'Type check', sub: 'pnpm typecheck --force', branch: { when: 'Web calls', name: 'Not caught', sub: 'Return types are hand-written' } },
+        { name: 'Other gates', sub: 'lint · arch · i18n · ctx', branch: { when: 'Any fails', name: 'CI goes red', sub: 'Run them locally first' } },
+      ],
+      end: { name: 'Ready to merge', sub: 'Mobile is covered by types' },
+      caption: 'Without --force, a turbo cache hit prints the previous run: it may report an error fixed long ago, or miss a new one',
+    },
+  },
 }
