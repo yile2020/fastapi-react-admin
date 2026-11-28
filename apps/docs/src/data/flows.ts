@@ -116,4 +116,32 @@ export const flows = {
       caption: 'The first two steps are per API, the last three per query: the same person on the same API can get different conditions on users and on departments',
     },
   },
+  /**
+   * app/task：scheduler_service（写表后在 Redis 打变更标记）→ utils/schedulers.py（beat 每拍看标记重读、按 DATETIME_TIMEZONE 墙上时间）
+   * → broker（CELERY_BROKER_REDIS_DATABASE）→ worker（未注册的任务只记一条 Received unregistered task，不产生执行记录）→ with_timeout
+   */
+  scheduler: {
+    zh: {
+      steps: [
+        { name: '界面保存', sub: '写进数据库，通知 beat 重读' },
+        { name: 'beat 到点派发', sub: '按服务器时区的本地时间', branch: { when: 'beat 没起', name: '永远不触发', sub: '配置照样能保存' } },
+        { name: '进入队列', sub: 'Redis 1 号库（可改）', branch: { when: '库号被别的项目占用', name: '任务被别人取走', sub: '两边互相抢' } },
+        { name: 'worker 接单', sub: '按任务名找代码', branch: { when: '任务没注册', name: '直接丢弃', sub: '列表上这一行标红' } },
+        { name: '执行', sub: '默认最长 30 分钟', branch: { when: '出错 · 超时', name: '记为失败', sub: '异常栈在执行记录里' } },
+      ],
+      end: { name: '执行记录', sub: '状态 · 返回值 · 哪个 worker' },
+      caption: '每 60 秒及更频繁的内置任务（心跳、投递、公告对时）刻意不写执行记录，否则一天几千行',
+    },
+    en: {
+      steps: [
+        { name: 'Saved in the UI', sub: 'Written to the database; beat is told to reload' },
+        { name: 'Beat fires on time', sub: "In the server's local time zone", branch: { when: 'Beat not running', name: 'Never fires', sub: 'Saving still works' } },
+        { name: 'Queued', sub: 'Redis database 1 (configurable)', branch: { when: 'DB shared with another project', name: 'Taken by them', sub: 'Both sides steal tasks' } },
+        { name: 'Worker picks up', sub: 'Looks the task up by name', branch: { when: 'Not registered', name: 'Dropped', sub: 'The row is flagged red' } },
+        { name: 'Runs', sub: '30 minutes max by default', branch: { when: 'Error · timeout', name: 'Recorded as failed', sub: 'Traceback in the record' } },
+      ],
+      end: { name: 'Run record', sub: 'Status · result · which worker' },
+      caption: 'Built-in tasks running every 60 s or more often (heartbeat, deliveries, notice sync) deliberately write no run records — otherwise thousands a day',
+    },
+  },
 }
