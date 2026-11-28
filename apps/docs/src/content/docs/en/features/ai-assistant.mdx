@@ -5,7 +5,12 @@ sidebar:
   order: 4
 ---
 
+import DiagramFlow from '../../../../components/DiagramFlow.astro'
+import { flows } from '../../../../data/flows'
+
 The AI assistant is a chat interface (a full page, plus a side drawer you can open over any screen) that answers questions and performs admin tasks by calling registered backend tools. Every tool call runs as the signed-in user, inside that user's permission codes and row-level data scope. A write action is previewed first and only runs after the user clicks **Confirm**. Every call, including refused ones, is written to an audit table, and external systems can reach the same tools through an MCP gateway that applies the same checks.
+
+This page first connects a model and has it read and then change some data, then shows the checks every tool call passes, then providers, tools, auditing, MCP and common problems.
 
 ## UI entry points
 
@@ -22,6 +27,22 @@ Both chat entry points share one hook ([`use-chat-session.ts`](https://github.co
 :::note[Live demo]
 In the [demo](https://fra.wubunan.com/sign-in) (`admin` / `123456`), these pages are under **AI assistant**. Each deployment configures its own model key, so don't count on the demo chat answering. When no provider is configured, the chat shows an explicit "no model provider configured" error instead of failing silently.
 :::
+
+## Quick start
+
+About ten minutes; you need a key for any OpenAI-compatible API (DeepSeek, Qwen, Zhipu or an internal gateway):
+
+1. Set `AI_ENCRYPT_SECRET_KEY` in `.env` (`openssl rand -hex 32`) and restart the backend, or saving a provider is refused.
+2. Open **AI assistant → Model credentials**, create a provider: choose a type (the URL and model are prefilled), enter the API key, run *Test connectivity* to see the latency, and set it as default.
+3. Open **AI assistant → Chat** and ask "who am I": above the answer you see the tool it called (`system_whoami`), the permission code and the time taken.
+4. Then say "create a department called Test under head office": instead of doing it, it shows a confirm card with the preview; only clicking confirm creates it.
+5. Open **AI assistant → Tool logs**: both calls are there, one read and one write.
+
+## Processing order
+
+When the AI wants to call a tool, these checks run in order — the model itself decides none of them:
+
+<DiagramFlow {...flows.aiTool.en} />
 
 ## Model providers
 
@@ -153,6 +174,44 @@ Permission codes per screen: chat `ai:chat:use` · model credentials `ai:provide
 | `AI_MCP_RATE_PER_MINUTE` | `120` | Requests per minute per MCP credential (per credential) |
 | `AI_WEB_BASE_URL` | `http://localhost:8888` | Base URL for the confirmation link when MCP triggers a write; **set it to the real domain before going live** |
 | `AI_EXTERNAL_HTTP_TIMEOUT` · `AI_EXTERNAL_HTTP_USE_PROXY` | `15` · `true` | Timeout for external HTTP tools (such as weather), and whether to use the proxy configured in the environment |
+
+## Troubleshooting
+
+The messages below are Chinese-only for now; the quoted text is what appears.
+
+### No model provider
+
+Symptom: `还没有配置可用的模型供应商，请先到「模型密钥管理」里添加一个` (no usable model provider yet).
+
+Fix: add a provider as in [quick start](#quick-start) step 2 and make sure it's enabled.
+
+### Saving a provider is refused
+
+Symptom: `未配置 AI_ENCRYPT_SECRET_KEY，无法安全保存模型密钥。` (key not configured).
+
+Fix: generate one with `openssl rand -hex 32`, put it in `AI_ENCRYPT_SECRET_KEY` in `apps/api/backend/.env` and restart. API keys are stored encrypted; without the key nothing is stored.
+
+### Connectivity test fails
+
+| Symptom | Check first |
+|---|---|
+| `SSLCertVerificationError` | The internal gateway uses a self-signed certificate: turn off TLS verification on the provider |
+| Fails only after the full timeout | The system-proxy switch is the wrong way round: on where public services need a proxy, usually off for an internal gateway |
+| Connects, but never calls tools | The model behind the gateway doesn't support function calling; pick one that does |
+
+### AI says it can't
+
+Usually it **can't see** that tool at all: you lack its permission code, its domain isn't in `AI_TOOL_DOMAINS`, or the plugin providing it is disabled. Superusers see every tool. Deletions were deliberately never made into tools.
+
+### Confirm card no longer works
+
+Symptom: `确认已过期，请重新发起这个操作` (confirmation expired).
+
+Confirm tokens last 300 seconds and work once. If it timed out or was already used, ask the AI to start the action again.
+
+### Rate limited
+
+Each person can send 20 messages a minute (`AI_CHAT_RATE_PER_MINUTE`), counted per user rather than per IP. Wait a moment and send again.
 
 ## Limitations
 

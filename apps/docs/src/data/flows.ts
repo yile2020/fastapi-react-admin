@@ -444,4 +444,32 @@ export const flows = {
       caption: 'Without --force, a turbo cache hit prints the previous run: it may report an error fixed long ago, or miss a new one',
     },
   },
+  /**
+   * plugin/ai/core/dispatcher.py：工具清单按 user_has_perm / is_staff / AI_TOOL_DOMAINS 先过滤 → 执行时再查（幻觉、权限收回、只读入口 → denied）
+   * → mutating 工具先跑 preview（失败不出卡片）→ cf_ 令牌存 Redis 300 秒 → /tools/confirm 原子 DELETE 抢占后再分发；每次都写 ai_tool_invocation
+   */
+  aiTool: {
+    zh: {
+      steps: [
+        { name: '交给模型前', sub: '按你的权限过滤工具清单', branch: { when: '你没权限', name: '模型看不到这个工具', sub: '只能回答做不了' } },
+        { name: '模型提议调用', sub: '它只是「建议者」' },
+        { name: '执行前再查', sub: '同一套权限码和数据范围', branch: { when: '不该执行', name: '拒绝', sub: '记为「被拒绝」' } },
+        { name: '写操作先预演', sub: '和页面同一份校验', branch: { when: '预演不通过', name: '不弹确认卡片', sub: '原因转告给你' } },
+        { name: '你点确认', sub: '一次性令牌，300 秒有效', branch: { when: '过期 · 已用过', name: '确认失效', sub: '重新发起这个操作' } },
+      ],
+      end: { name: '执行并留审计', sub: '每次调用一行记录' },
+      caption: '只读工具没有预演和确认这两步，直接执行；MCP 网关调用的是同一条路，写操作要被代表的人本人在网页上确认',
+    },
+    en: {
+      steps: [
+        { name: 'Before the model', sub: 'Tools filtered by your permissions', branch: { when: 'No permission', name: 'Tool never shown', sub: 'It can only say no' } },
+        { name: 'Model proposes', sub: 'Only ever a suggestion' },
+        { name: 'Checked again', sub: 'Same codes and data scope', branch: { when: 'Not allowed', name: 'Denied', sub: 'Logged as denied' } },
+        { name: 'Writes preview first', sub: 'Same validation as the UI', branch: { when: 'Preview fails', name: 'No confirm card', sub: 'Reason relayed to you' } },
+        { name: 'You confirm', sub: 'One-time token, 300 s', branch: { when: 'Expired · used', name: 'Confirm invalid', sub: 'Start the action again' } },
+      ],
+      end: { name: 'Run and audited', sub: 'One row per call' },
+      caption: 'Read-only tools skip the preview and confirm steps; the MCP gateway takes the same path, and its writes must be confirmed on the web by the person being represented',
+    },
+  },
 }
