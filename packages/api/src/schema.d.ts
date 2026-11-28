@@ -81,6 +81,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/passkey/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 通行密钥登录开没开（登录页据此决定出不出按钮） */
+        get: operations["passkey_enabled_api_v1_auth_passkey_enabled_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/passkey/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 通行密钥登录：取挑战
+         * @description 不带用户名（可发现凭据）。`options` 原样交给浏览器的 PublicKeyCredential.parseRequestOptionsFromJSON()
+         */
+        post: operations["passkey_login_options_api_v1_auth_passkey_options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/passkey/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 通行密钥登录：交断言
+         * @description 通行密钥要求了用户验证（指纹 / 面容 / PIN），所以这条路不再走二次验证
+         */
+        post: operations["passkey_login_api_v1_auth_passkey_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/mfa/verify": {
         parameters: {
             query?: never;
@@ -939,6 +996,79 @@ export interface paths {
         post?: never;
         /** 重置用户的二次验证（手机丢了） */
         delete: operations["reset_user_mfa_api_v1_sys_users__pk__mfa_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sys/users/me/passkeys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取当前用户的通行密钥 */
+        get: operations["get_my_passkeys_api_v1_sys_users_me_passkeys_get"];
+        put?: never;
+        /** 添加通行密钥：交注册结果 */
+        post: operations["register_my_passkey_api_v1_sys_users_me_passkeys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sys/users/me/passkeys/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 添加通行密钥：取注册挑战
+         * @description `options` 原样交给浏览器的 PublicKeyCredential.parseCreationOptionsFromJSON()
+         */
+        post: operations["passkey_registration_options_api_v1_sys_users_me_passkeys_options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sys/users/me/passkeys/{pk}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** 给自己的通行密钥改名 */
+        put: operations["rename_my_passkey_api_v1_sys_users_me_passkeys__pk__put"];
+        post?: never;
+        /** 删除自己的一把通行密钥 */
+        delete: operations["delete_my_passkey_api_v1_sys_users_me_passkeys__pk__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sys/users/{pk}/passkeys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** 清掉用户的全部通行密钥（设备丢了） */
+        delete: operations["reset_user_passkeys_api_v1_sys_users__pk__passkeys_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -8471,6 +8601,54 @@ export interface components {
             created_time: string;
         };
         /**
+         * GetPasskeyAvailability
+         * @description 登录页据此决定出不出「用通行密钥登录」按钮
+         */
+        GetPasskeyAvailability: {
+            /**
+             * Enabled
+             * @description 服务端是否配置了通行密钥（PASSKEY_RP_ID + PASSKEY_ORIGINS）
+             */
+            enabled: boolean;
+        };
+        /**
+         * GetPasskeyDetail
+         * @description 通行密钥（只下发展示要用的，公钥 / 凭据 ID 不出网）
+         */
+        GetPasskeyDetail: {
+            /**
+             * Id
+             * @description 通行密钥 ID
+             */
+            id: string | number;
+            /**
+             * Name
+             * @description 名称
+             */
+            name: string;
+            /**
+             * Backed Up
+             * @description 是否已同步备份（云端 Passkey，换设备也能用）
+             */
+            backed_up: boolean;
+            /**
+             * Transports
+             * @description 传输方式，逗号分隔（internal / hybrid / usb …）
+             */
+            transports?: string | null;
+            /**
+             * Created Time
+             * Format: date-time
+             * @description 添加时间
+             */
+            created_time: string;
+            /**
+             * Last Used Time
+             * @description 最近一次用它登录的时间
+             */
+            last_used_time?: string | null;
+        };
+        /**
          * GetRecycledFileDetail
          * @description 回收站里的文件
          */
@@ -11193,6 +11371,78 @@ export interface components {
             total_pages: number;
             links: components["schemas"]["_Links"];
         };
+        /**
+         * PasskeyLoginOptions
+         * @description 登录第一步：挑战。`options` 原样交给 `PublicKeyCredential.parseRequestOptionsFromJSON()`
+         */
+        PasskeyLoginOptions: {
+            /**
+             * Challenge Id
+             * @description 挑战编号，第二步原样带回
+             */
+            challenge_id: string;
+            /**
+             * Options
+             * @description WebAuthn 的 PublicKeyCredentialRequestOptions（JSON 形式）
+             */
+            options: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * PasskeyLoginParam
+         * @description 登录第二步：`navigator.credentials.get()` 的结果
+         */
+        PasskeyLoginParam: {
+            /**
+             * Challenge Id
+             * @description 第一步给的挑战编号
+             */
+            challenge_id: string;
+            /**
+             * Credential
+             * @description PublicKeyCredential.toJSON() 的结果
+             */
+            credential: {
+                [key: string]: unknown;
+            };
+            /**
+             * Client
+             * @description 登录端
+             * @default web
+             * @enum {string}
+             */
+            client: "web" | "desktop" | "mobile";
+        };
+        /**
+         * PasskeyNameParam
+         * @description 改名
+         */
+        PasskeyNameParam: {
+            /**
+             * Name
+             * @description 名称
+             */
+            name: string;
+        };
+        /**
+         * PasskeyRegisterParam
+         * @description 添加：`navigator.credentials.create()` 的结果
+         */
+        PasskeyRegisterParam: {
+            /**
+             * Name
+             * @description 名称
+             */
+            name: string;
+            /**
+             * Credential
+             * @description PublicKeyCredential.toJSON() 的结果
+             */
+            credential: {
+                [key: string]: unknown;
+            };
+        };
         /** PingResult */
         PingResult: {
             /**
@@ -12148,6 +12398,38 @@ export interface components {
             msg: string;
             data: components["schemas"]["GetOpenAppDetail"];
         };
+        /** ResponseSchemaModel[GetPasskeyAvailability] */
+        ResponseSchemaModel_GetPasskeyAvailability_: {
+            /**
+             * Code
+             * @description 返回状态码
+             * @default 200
+             */
+            code: number;
+            /**
+             * Msg
+             * @description 返回信息
+             * @default 请求成功
+             */
+            msg: string;
+            data: components["schemas"]["GetPasskeyAvailability"];
+        };
+        /** ResponseSchemaModel[GetPasskeyDetail] */
+        ResponseSchemaModel_GetPasskeyDetail_: {
+            /**
+             * Code
+             * @description 返回状态码
+             * @default 200
+             */
+            code: number;
+            /**
+             * Msg
+             * @description 返回信息
+             * @default 请求成功
+             */
+            msg: string;
+            data: components["schemas"]["GetPasskeyDetail"];
+        };
         /** ResponseSchemaModel[GetRoleWithRelationDetail] */
         ResponseSchemaModel_GetRoleWithRelationDetail_: {
             /**
@@ -12868,6 +13150,22 @@ export interface components {
             msg: string;
             data: components["schemas"]["PageData_GetWebhookDeliveryRow_"];
         };
+        /** ResponseSchemaModel[PasskeyLoginOptions] */
+        ResponseSchemaModel_PasskeyLoginOptions_: {
+            /**
+             * Code
+             * @description 返回状态码
+             * @default 200
+             */
+            code: number;
+            /**
+             * Msg
+             * @description 返回信息
+             * @default 请求成功
+             */
+            msg: string;
+            data: components["schemas"]["PasskeyLoginOptions"];
+        };
         /** ResponseSchemaModel[PingResult] */
         ResponseSchemaModel_PingResult_: {
             /**
@@ -13421,6 +13719,23 @@ export interface components {
             msg: string;
             /** Data */
             data: components["schemas"]["GetNoticePublicItem"][];
+        };
+        /** ResponseSchemaModel[list[GetPasskeyDetail]] */
+        ResponseSchemaModel_list_GetPasskeyDetail__: {
+            /**
+             * Code
+             * @description 返回状态码
+             * @default 200
+             */
+            code: number;
+            /**
+             * Msg
+             * @description 返回信息
+             * @default 请求成功
+             */
+            msg: string;
+            /** Data */
+            data: components["schemas"]["GetPasskeyDetail"][];
         };
         /** ResponseSchemaModel[list[GetRoleDetail]] */
         ResponseSchemaModel_list_GetRoleDetail__: {
@@ -15454,6 +15769,79 @@ export interface operations {
             };
         };
     };
+    passkey_enabled_api_v1_auth_passkey_enabled_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseSchemaModel_GetPasskeyAvailability_"];
+                };
+            };
+        };
+    };
+    passkey_login_options_api_v1_auth_passkey_options_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseSchemaModel_PasskeyLoginOptions_"];
+                };
+            };
+        };
+    };
+    passkey_login_api_v1_auth_passkey_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasskeyLoginParam"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseSchemaModel_GetLoginToken_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     mfa_verify_api_v1_auth_mfa_verify_post: {
         parameters: {
             query?: never;
@@ -17468,6 +17856,179 @@ export interface operations {
         };
     };
     reset_user_mfa_api_v1_sys_users__pk__mfa_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 用户 ID */
+                pk: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_my_passkeys_api_v1_sys_users_me_passkeys_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseSchemaModel_list_GetPasskeyDetail__"];
+                };
+            };
+        };
+    };
+    register_my_passkey_api_v1_sys_users_me_passkeys_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasskeyRegisterParam"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseSchemaModel_GetPasskeyDetail_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    passkey_registration_options_api_v1_sys_users_me_passkeys_options_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseSchemaModel_dict_str__Any__"];
+                };
+            };
+        };
+    };
+    rename_my_passkey_api_v1_sys_users_me_passkeys__pk__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 通行密钥 ID */
+                pk: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasskeyNameParam"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_my_passkey_api_v1_sys_users_me_passkeys__pk__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 通行密钥 ID */
+                pk: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_user_passkeys_api_v1_sys_users__pk__passkeys_delete: {
         parameters: {
             query?: never;
             header?: never;

@@ -2,7 +2,7 @@ import * as React from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  IconAlertTriangle, IconAt, IconAuth2fa, IconBellRinging, IconCheck, IconClock, IconDeviceMobile, IconExternalLink, IconFileExport, IconIdBadge2,
+  IconAlertTriangle, IconAt, IconAuth2fa, IconFingerprint, IconBellRinging, IconCheck, IconClock, IconDeviceMobile, IconExternalLink, IconFileExport, IconIdBadge2,
   IconInfoCircle, IconKey, IconLoader2, IconMail, IconPhoto, IconPlugConnected,
   IconShieldLock, IconSignature, IconUpload, IconUser,
 } from '@tabler/icons-react'
@@ -29,6 +29,7 @@ import { StatusBadge, StatusPill } from '../_shared/status'
 import { PasswordStrength } from './password-strength'
 import { ExportsPanel } from './exports-panel'
 import { MfaBlock } from './mfa-block'
+import { PasskeyBlock } from './passkey-block'
 import { NotifyPrefsPanel } from './notify-prefs-panel'
 import { RecentLogins } from './recent-logins'
 import {
@@ -953,6 +954,15 @@ function SecurityPanel({ me }: { me?: CurrentUser }) {
         testId="profile-mfa"
       >
         <MfaBlock />
+      </Block>
+      {/* 通行密钥：不用密码、用指纹 / 面容 / PIN 登录。和二次验证挨着 —— 都是「这个号还靠什么守着」 */}
+      <Block
+        title={t('通行密钥')}
+        description={t('用这台设备的指纹、面容或 PIN 直接登录，不用输密码，也不用再输动态码。一个账号可以给每台设备各加一把。')}
+        icon={<IconFingerprint />}
+        testId="profile-passkey"
+      >
+        <PasskeyBlock />
       </Block>
       <SocialBlock />
       {/* 最近登录放最后：前两块是「我主动改什么」，这块是「有没有人动过我的号」，

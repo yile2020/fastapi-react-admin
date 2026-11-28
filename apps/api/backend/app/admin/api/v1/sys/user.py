@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Path, Query, Request, UploadFile
 from fastapi.responses import Response
@@ -15,6 +15,7 @@ from backend.app.admin.schema.data_import import (
 from backend.app.admin.schema.export_job import GetExportJobDetail, StartExportParam
 from backend.app.admin.schema.login_log import GetLoginLogDetail
 from backend.app.admin.schema.mfa import GetMfaStatus, MfaOtpParam, MfaRecoveryCodes, MfaSetupInfo
+from backend.app.admin.schema.passkey import GetPasskeyDetail, PasskeyNameParam, PasskeyRegisterParam
 from backend.app.admin.schema.role import GetRoleDetail
 from backend.app.admin.schema.user import (
     AddUserParam,
@@ -29,6 +30,7 @@ from backend.app.admin.schema.user_preference import (
     GetUserPreferenceDetail,
     PutUserPreferenceParam,
 )
+from backend.app.admin.service import passkey_service
 from backend.app.admin.service.export_service import export_service
 from backend.app.admin.service.import_service import import_service
 from backend.app.admin.service.login_log_service import login_log_service
@@ -481,4 +483,63 @@ async def reset_user_mfa(
     db: CurrentSessionTransaction, pk: Annotated[int, Path(description='用户 ID')]
 ) -> ResponseModel:
     await mfa_service.admin_reset(db, pk)
+    return response_base.success()
+
+
+# ── 通行密钥（Passkey）：个人中心自助 + 管理员重置 ──
+# 只能管自己的：路径里没有用户 ID，别人的那一把按「不存在」处理（404）
+
+
+@router.get('/me/passkeys', summary='获取当前用户的通行密钥', dependencies=[DependsJwtAuth])
+async def get_my_passkeys(db: CurrentSession, request: Request) -> ResponseSchemaModel[list[GetPasskeyDetail]]:
+    rows = await passkey_service.list_mine(db, request.user.id)
+    return response_base.success(data=[GetPasskeyDetail.model_validate(r) for r in rows])
+
+
+@router.post(
+    '/me/passkeys/options',
+    summary='添加通行密钥：取注册挑战',
+    description='`options` 原样交给浏览器的 PublicKeyCredential.parseCreationOptionsFromJSON()',
+    dependencies=[DependsJwtAuth, Depends(RateLimiter(Rate(10, Duration.MINUTE)))],
+)
+async def passkey_registration_options(db: CurrentSession, request: Request) -> ResponseSchemaModel[dict[str, Any]]:
+    return response_base.success(data=await passkey_service.registration_options(db, request.user))
+
+
+@router.post(
+    '/me/passkeys',
+    summary='添加通行密钥：交注册结果',
+    dependencies=[DependsJwtAuth, Depends(RateLimiter(Rate(10, Duration.MINUTE)))],
+)
+async def register_my_passkey(
+    db: CurrentSessionTransaction, request: Request, obj: PasskeyRegisterParam
+) -> ResponseSchemaModel[GetPasskeyDetail]:
+    row = await passkey_service.register(db, request.user, obj.name, obj.credential)
+    return response_base.success(data=GetPasskeyDetail.model_validate(row))
+
+
+@router.put('/me/passkeys/{pk}', summary='给自己的通行密钥改名', dependencies=[DependsJwtAuth])
+async def rename_my_passkey(
+    db: CurrentSessionTransaction,
+    request: Request,
+    pk: Annotated[int, Path(description='通行密钥 ID')],
+    obj: PasskeyNameParam,
+) -> ResponseModel:
+    await passkey_service.rename(db, request.user.id, pk, obj.name)
+    return response_base.success()
+
+
+@router.delete('/me/passkeys/{pk}', summary='删除自己的一把通行密钥', dependencies=[DependsJwtAuth])
+async def delete_my_passkey(
+    db: CurrentSessionTransaction, request: Request, pk: Annotated[int, Path(description='通行密钥 ID')]
+) -> ResponseModel:
+    await passkey_service.remove(db, request.user.id, pk)
+    return response_base.success()
+
+
+@router.delete('/{pk}/passkeys', summary='清掉用户的全部通行密钥（设备丢了）', dependencies=[DependsSuperUser])
+async def reset_user_passkeys(
+    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='用户 ID')]
+) -> ResponseModel:
+    await passkey_service.admin_reset(db, pk)
     return response_base.success()

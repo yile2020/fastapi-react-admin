@@ -7,6 +7,7 @@ import { useAiDrawerStore } from '../pages/ai-chat/drawer-store'
 import { useUploadStore } from '../shell/upload-store'
 import { tryDesktop } from '../desktop'
 import type { AuthLoginOutcome } from '../desktop/contract'
+import { getPasskeyAssertion } from './passkey'
 
 /** 会话结束的原因码与提示文案（和移动端共用的那一份在 `@admin/api`）。登录页从这里取，不直接依赖那个包 */
 export { isSessionEndReason, SESSION_END_MESSAGE, type SessionEndReason } from '@admin/api'
@@ -124,6 +125,24 @@ export async function loginByPhone(qc: QueryClient, param: PhoneLoginParam): Pro
   const challenge = challengeOf(res)
   if (!challenge) afterLogin(qc, (res as LoginResult).access_token)
   return challenge
+}
+
+/**
+ * 通行密钥登录：取挑战 → 浏览器弹指纹 / 面容 / PIN → 交断言 → 拿到会话。
+ *
+ * 不先问用户名（用哪把由认证器挑）；也不会再要二次验证 —— 通行密钥本身就要求了用户验证，后端这条路不走 MFA。
+ * 只有网页端：桌面端的渲染层跑在 `app://local` 上，凭据绑的网站域名对不上，入口不显示（`passkeySupported`）。
+ * 浏览器那一步被取消 / 超时抛 `PasskeyCancelled`，服务端拒了抛 `ApiError`，交给 `passkeyErrorMessage` 翻成一句话。
+ */
+export async function loginByPasskey(qc: QueryClient): Promise<void> {
+  const first = await api.POST<{ challenge_id: string; options: Record<string, unknown> }>(
+    '/api/v1/auth/passkey/options'
+  )
+  const credential = await getPasskeyAssertion(first.options)
+  const res = await api.POST<LoginResult>('/api/v1/auth/passkey/login', {
+    body: { challenge_id: first.challenge_id, credential, client: 'web' },
+  })
+  afterLogin(qc, res.access_token)
 }
 
 /**

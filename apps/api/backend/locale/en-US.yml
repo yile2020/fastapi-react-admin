@@ -145,6 +145,14 @@ error:
     setup_expired: Setup expired, please scan the code again
     setup_required: Please finish setting up two-factor authentication first
     swagger_unsupported: This account uses two-factor authentication; sign in from the login page (the Swagger shortcut cannot do the second step)
+  passkey:
+    already_registered: This passkey has already been added
+    challenge_expired: This request has expired. Please try again
+    disabled: Passkey sign-in is not enabled (an administrator must set PASSKEY_RP_ID and PASSKEY_ORIGINS)
+    invalid: This passkey is not valid. Try another one or sign in with your password
+    not_found: Passkey not found
+    register_failed: The passkey could not be added. Please try again (open the page on this site's address and complete fingerprint, face or PIN verification)
+    too_many: You can add at most {max} passkeys. Remove one you no longer use first
   notice:
     not_found: Notice does not exist
     attachment_invalid: The attachment does not exist, or you are not allowed to use that file
@@ -612,6 +620,7 @@ login_event:
 success:
   login:
     mfa_success: Signed in (two-factor)
+    passkey_success: Signed in (passkey)
     oauth2_success: Login success (OAuth2)
     success: Login success
 

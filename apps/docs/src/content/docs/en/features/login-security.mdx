@@ -20,12 +20,12 @@ For devices, idle timeouts and forced sign-out, see [Session management](/en/fea
 ## UI entry points
 
 - **Sign-in page** (`/sign-in`): everyone can open it.
-- **Profile** (`/profile`): change your password, bind a phone or authenticator, link third-party accounts, and review recent sign-ins.
-- **System → Users** (`/system/user`): superusers reset passwords and two-factor for others.
+- **Profile** (`/profile`): change your password, bind a phone or authenticator, manage passkeys, link third-party accounts, and review recent sign-ins.
+- **System → Users** (`/system/user`): superusers reset passwords and two-factor for others, or clear all of someone's passkeys.
 - **System → Config** (`/plugins/config`): change policies with `sys:config:edit`.
 - **Logs → Sign-in log** (`/log/login`): inspect attempts with `log:login:list`.
 
-Password and two-factor resets require a **superuser**, regardless of menu permissions.
+Password resets, two-factor resets and clearing passkeys require a **superuser**, regardless of menu permissions.
 
 ## Sign-in methods
 
@@ -34,6 +34,7 @@ Password and two-factor resets require a **superuser**, regardless of menu permi
 | Username and password | Enter your account, password and the image captcha enabled by default |
 | SMS code | The SMS plugin must be installed; first verify and bind your number in Profile |
 | GitHub / Google | The OAuth2 plugin must be configured; sign in with your password first and link your account in Profile |
+| Passkey | An admin has configured passkeys in `.env`; sign in with your password first and add one in Profile |
 
 An admin-entered or imported phone number cannot be used for SMS sign-in until its owner verifies it. Unknown third-party accounts are refused by default; [automatic registration settings](/en/reference/security-config/#change-settings-in-env) must be enabled explicitly.
 
@@ -77,6 +78,20 @@ Under **System → Config → Sign-in policy**, set **Require two-factor**:
 
 An unenrolled user must bind an authenticator during the next web sign-in before entering the system. Required users cannot turn it off. The mobile app accepts codes, but initial enrollment must be completed on the web.
 
+## Passkeys
+
+A passkey replaces the password with a fingerprint, face or device PIN, and you do not type your account name. An admin first sets `PASSKEY_RP_ID` and `PASSKEY_ORIGINS` in `apps/api/backend/.env` and restarts the backend (see [security settings](/en/reference/security-config/#change-settings-in-env)). Until then the sign-in page hides the button and Profile cannot add one.
+
+1. Sign in with your password, open **Profile → Security → Passkey**, give it a name and click **Add a passkey**, then follow the browser or system prompt.
+2. Sign out, click **Sign in with a passkey** on the sign-in page, pick this passkey and verify.
+
+**What success looks like:** you land in the app without entering an account or password, and the passkey's row in Profile shows when it was last used.
+
+- A passkey already proves both "has this device" and "is this person", so passkey sign-in **does not ask for a two-factor code**, and the two-factor requirement policy does not apply to it.
+- Disabled, locked and password-expired accounts are still refused. A failed attempt counts only toward the IP limit, because the account is not known at that point.
+- Each user can add up to 10 passkeys and rename or delete them in Profile. If someone loses their device, a superuser can clear all of their passkeys under Users.
+- The page's domain must match the configuration. For local development open `http://localhost:8888`; browsers refuse passkeys on `127.0.0.1`.
+
 ## Password rules
 
 | Rule | Default | Allowed range |
@@ -112,7 +127,8 @@ Superusers view and revoke sessions under **Monitoring → Active sessions**. Th
 
 ## Limitations
 
-- The only second factors are TOTP and recovery codes: no passkeys (WebAuthn), no hardware keys, and SMS is not offered as a second factor.
+- The only second factors are TOTP and recovery codes. Passkeys replace the password but are not a second factor, and SMS is not offered as one.
+- Passkeys work only in the web app: the desktop app treats them as unsupported (its window is not on the site's domain), and the mobile app does not support them yet.
 - No self-service password recovery or self-registration (except third-party sign-in with auto-registration explicitly turned on).
 - The password expiry reminder is not shown in the web client yet, and an expired password cannot be changed by its owner; see [above](#password-rules).
 - Session operations use single-instance Redis Lua scripts; Redis Cluster has not been tested. See [Session management](/en/features/login-sessions/).
