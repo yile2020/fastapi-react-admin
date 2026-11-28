@@ -7,10 +7,19 @@ sidebar:
 
 import shot from '../../../../../../../docs/screenshots/monitor-redis.png'
 import ProductShot from '../../../../components/ProductShot.astro'
+import DiagramFlow from '../../../../components/DiagramFlow.astro'
+import { flows } from '../../../../data/flows'
 
-The admin ships two monitoring pages. **Server** shows the CPU, memory and disks of the machine running the backend, and the backend process itself, right now. **Redis** shows memory, key count, operations per second, clients and the busiest commands. Both show **the present only**: the trend lines are the few dozen samples taken since you opened the page, and nothing is stored. External monitoring uses a different address, `/api/health/status`, which needs no sign-in and reports in one response whether the API, database, Redis, scheduler (beat) and worker are healthy.
+There are two ways to see whether the system is healthy. **The monitoring pages** are for people — the server's CPU, memory and disks, Redis memory and operations per second — and show only the present moment. **The health endpoint** `/api/health/status` is for external monitoring: no sign-in, and one call reports whether the API, database, Redis, scheduler and background worker are up — 200 when all are fine, 503 when any is not.
+
+This page first runs a health check and deliberately stops a process to see how it's reported, then explains where the background heartbeats come from, then the two monitoring pages and common problems.
+
+<details>
+<summary>Show Redis monitoring</summary>
 
 <ProductShot src={shot} alt="Redis monitoring" url="localhost:8888/monitor/redis" />
+
+</details>
 
 ## UI entry points
 
@@ -23,6 +32,27 @@ The admin ships two monitoring pages. **Server** shows the CPU, memory and disks
 | Health check | `/api/health/status` | No sign-in |
 
 Monitoring pages and endpoints are guarded by **superuser**, with no permission codes: granting these menus to an ordinary role does not let it open them.
+
+## Quick start
+
+With everything running locally under `pnpm dev`, about five minutes:
+
+1. Open `http://127.0.0.1:8088/api/health/status`: 200, with `api`, `database`, `redis`, `scheduler` and `worker` all `ok` under `services`, plus the version and commit at the end.
+2. Stop the worker process in the `pnpm dev` terminal (or `docker stop` the worker container in production), wait three minutes and refresh: `worker` turns `stale` and the whole response becomes 503.
+3. Start the worker again; it's back to 200 within a minute.
+4. As a superuser open **Monitoring → Redis**, set refresh to 5 seconds and watch the ops/s trend grow.
+
+For external monitoring (Uptime Kuma, a cloud monitor…), probe this URL and judge by status code — see [Deploying to a server](/en/getting-started/deployment/#external-monitoring).
+
+## Heartbeats
+
+The database and Redis are pinged on the spot; the scheduler and the worker have no port to probe, so they write heartbeats themselves:
+
+<DiagramFlow {...flows.health.en} />
+
+- **180 seconds before it's a failure**: three cycles by default, so a missed tick during a restart or deploy doesn't raise a false alarm.
+- **Only components you operate**: broken mail, object storage, third-party sign-in or AI providers never make it 503 — check their own delivery records and call logs.
+- **No details leak**: on failure only the exception's type name is given, never its message, so anonymous callers don't see connection strings.
 
 ## The two monitoring pages
 
@@ -68,6 +98,37 @@ The body ends with `version` and `commit` (a 7-character commit hash), so you ca
 Which address external monitoring should probe, and why not `/healthz`, is in [Deployment](/en/getting-started/deployment/#external-monitoring). Container orchestration uses a separate `/health/ready` that checks only the database and Redis.
 
 The dashboard's **Service status** card reads the same checks, plus how many sessions are online on web, desktop and mobile; it does not poll, and re-opening it within 20 seconds uses the cached result.
+
+## Troubleshooting
+
+### Health check stays 503
+
+See which item isn't `ok`:
+
+| Status | Meaning | Check first |
+|---|---|---|
+| `database` / `redis` is `error` | Can't connect | The database / Redis process and network; the `error` field holds the exception type |
+| `scheduler` is `missing` or `stale` | Beat isn't running, or is stuck | Logs of the beat process / `fba_beat` container |
+| `worker` is `stale` | The worker isn't running, or hasn't handled a heartbeat for 3 minutes | Worker logs; whether another project is stealing the queue (see [Scheduler](/en/features/scheduler/#job-didnt-run-on-time)) |
+| `worker` is `unknown` | The scheduler itself is failing, so the worker can't be judged | Fix the scheduler first |
+
+### Returns unavailable
+
+Symptom: 503 with `{"status":"unavailable"}`.
+
+Cause: nginx answered — the backend process can't be reached at all (not started, crashed, restarting). Check the api container's logs.
+
+### Admins can't open monitoring
+
+Server and Redis monitoring are superuser-only, with no permission code; granting the menus to a role doesn't open them.
+
+### Redis key count looks low
+
+The key count is **the current database only** (`DBSIZE`); keys in other databases on the same Redis aren't counted.
+
+### Server page shows the container
+
+It shows the machine or container running the backend API, not where the database or Redis run; inside a container, CPU and memory are what the container sees.
 
 ## Settings
 

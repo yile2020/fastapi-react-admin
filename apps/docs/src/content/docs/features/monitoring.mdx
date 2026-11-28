@@ -7,10 +7,19 @@ sidebar:
 
 import shot from '../../../../../../docs/screenshots/monitor-redis.png'
 import ProductShot from '../../../components/ProductShot.astro'
+import DiagramFlow from '../../../components/DiagramFlow.astro'
+import { flows } from '../../../data/flows'
 
-后台自带两个监控页：**服务器监控**看跑后端的那台机器此刻的 CPU、内存、磁盘和后端进程本身；**Redis 监控**看内存、键数、每秒操作数、客户端和最耗时的命令。两页都**只显示此刻**，趋势线只是这次打开页面以来的几十个采样点，不落库。给外部监控系统用的是另一个地址：`/api/health/status`，不用登录，一次列出 API、数据库、Redis、调度器（beat）和 worker 是否正常。
+想知道系统现在好不好，有两种看法：**后台里的监控页**给人看 —— 服务器的 CPU、内存、磁盘，Redis 的内存和每秒操作数，只显示此刻；**健康检查地址** `/api/health/status` 给外部监控系统探 —— 不用登录，一次列出 API、数据库、Redis、调度器和后台任务进程是否正常，全部正常回 200、任一异常回 503。
+
+本页先带你看一次健康检查、故意停掉一个进程看它怎么报，再讲后台任务的心跳是怎么来的，然后是两个监控页和常见问题。
+
+<details>
+<summary>查看 Redis 监控截图</summary>
 
 <ProductShot src={shot} alt="Redis 监控" url="localhost:8888/monitor/redis" />
+
+</details>
 
 ## 界面入口
 
@@ -23,6 +32,27 @@ import ProductShot from '../../../components/ProductShot.astro'
 | 健康检查 | `/api/health/status` | 不用登录 |
 
 监控类页面和接口按**超级管理员**判，没有权限码：给普通角色授了这几个菜单也打不开。
+
+## 上手步骤
+
+本地用 `pnpm dev` 起着全部服务时，大约 5 分钟：
+
+1. 浏览器打开 `http://127.0.0.1:8088/api/health/status`：返回 200，`services` 里 `api`、`database`、`redis`、`scheduler`、`worker` 五项都是 `ok`，最后带着版本号和提交号。
+2. 在 `pnpm dev` 的终端里停掉 worker 那个进程（或 `docker stop` 生产环境的 worker 容器），等 3 分钟再刷新：`worker` 变成 `stale`，整个响应变成 503。
+3. 把 worker 起回来，一分钟内恢复 200。
+4. 用超级管理员打开 **系统监控 → Redis 监控**，把刷新改成 5 秒，看每秒操作数的趋势线一点点长出来。
+
+接外部监控（Uptime Kuma、云监控等）时，探这个地址、按状态码判断即可，见[部署到服务器](/getting-started/deployment/#外部监控)。
+
+## 心跳从哪来
+
+数据库和 Redis 是当场 ping 的；调度器和后台任务进程没有端口可探，靠它们自己写心跳：
+
+<DiagramFlow {...flows.health.zh} />
+
+- **180 秒才报异常**：默认等于 3 个周期，重启、发版换容器时漏一两拍不会误报。
+- **只列自己运维的组件**：邮件、对象存储、第三方登录、AI 服务商坏了不会让它 503 —— 那些去各自的投递记录、调用日志里看。
+- **不泄露细节**：出错时只给异常的类型名，不带异常消息，匿名访问者看不到连接串之类的东西。
 
 ## 两个监控页
 
@@ -68,6 +98,37 @@ import ProductShot from '../../../components/ProductShot.astro'
 外部监控该探哪个地址、为什么不能用 `/healthz`，在[部署到服务器](/getting-started/deployment/#外部监控)里。容器编排用的是另一个只查数据库和 Redis 的 `/health/ready`。
 
 工作台的「服务状态」卡片读的是同一套检查，外加网页 / 桌面 / 移动三端各有多少在线会话；它不自动轮询，20 秒内重复打开用缓存。
+
+## 常见问题
+
+### 健康检查一直是 503
+
+看响应里哪一项不是 `ok`：
+
+| 状态 | 意思 | 先查什么 |
+|---|---|---|
+| `database` / `redis` 是 `error` | 连不上 | 数据库、Redis 进程和网络；`error` 字段里是异常类型名 |
+| `scheduler` 是 `missing` 或 `stale` | beat 没起，或卡住了 | beat 进程 / `fba_beat` 容器的日志 |
+| `worker` 是 `stale` | worker 没起，或 3 分钟没处理过心跳任务 | worker 进程的日志；队列是不是被别的项目抢了（见[定时任务](/features/scheduler/#到点了任务没跑)） |
+| `worker` 是 `unknown` | 调度器本身不正常，worker 的心跳无从判断 | 先修调度器 |
+
+### 返回 unavailable
+
+现象：503，响应体是 `{"status":"unavailable"}`。
+
+原因：这是 nginx 回的 —— 后端进程整个连不上（没起、崩了、正在重启）。看 api 容器的日志。
+
+### 监控页打不开
+
+服务器监控、Redis 监控按超级管理员判，没有权限码；给角色授了菜单也打不开。
+
+### Redis 键数比实际少
+
+键数量只是**当前库**（`DBSIZE`），同一台 Redis 上其他库的键不算。
+
+### 监控到的是容器
+
+它看的是跑后端 API 的那台机器或容器，不是数据库、Redis 所在的机器；容器里的 CPU 和内存是容器看到的值。
 
 ## 配置项
 

@@ -339,4 +339,30 @@ export const flows = {
       caption: 'Admin sign-outs, password changes and disabled accounts end sessions at any time; pages with a live connection return to sign-in immediately',
     },
   },
+  /**
+   * app/task/utils/schedulers.py 的 tick（调度器心跳）→ health.heartbeat 任务（worker 心跳）→ core/registrar.py 的 /api/health/status
+   * （并发查 DB / Redis / 两个心跳；超过 HEARTBEAT_MAX_AGE_SECONDS 记 stale、没写过记 missing、调度器不正常时 worker 记 unknown）
+   */
+  health: {
+    zh: {
+      steps: [
+        { name: 'beat 每一拍', sub: '写调度器心跳', branch: { when: 'beat 没起', name: '调度器异常', sub: 'worker 也无从判断（unknown）' } },
+        { name: '派心跳任务', sub: '每 60 秒一个 health.heartbeat' },
+        { name: 'worker 执行', sub: '写 worker 心跳', branch: { when: 'worker 没起', name: 'worker 过期', sub: '180 秒没更新（stale）' } },
+        { name: '健康检查', sub: '同时查数据库 · Redis · 两个心跳', branch: { when: '任一异常', name: '503', sub: '逐项列出状态' } },
+      ],
+      end: { name: '200', sub: '五项都是 ok' },
+      caption: '后端进程整个挂了时由 nginx 直接回 503 和 {"status":"unavailable"}，并带 Retry-After: 15',
+    },
+    en: {
+      steps: [
+        { name: 'Every beat tick', sub: 'Writes the scheduler heartbeat', branch: { when: 'Beat down', name: 'Scheduler failing', sub: "Worker can't be judged (unknown)" } },
+        { name: 'Heartbeat task', sub: 'A health.heartbeat every 60 s' },
+        { name: 'Worker runs it', sub: 'Writes the worker heartbeat', branch: { when: 'Worker down', name: 'Worker stale', sub: 'No update for 180 s' } },
+        { name: 'Health check', sub: 'DB · Redis · both heartbeats at once', branch: { when: 'Any failing', name: '503', sub: 'Each item listed' } },
+      ],
+      end: { name: '200', sub: 'All five ok' },
+      caption: 'If the backend process is down entirely, nginx answers 503 with {"status":"unavailable"} and Retry-After: 15',
+    },
+  },
 }
