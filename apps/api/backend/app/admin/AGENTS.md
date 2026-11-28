@@ -345,6 +345,60 @@ SQL Server 2022（`sys.identity_columns` 对这张表 0 行）/ MySQL 8.4；之�
 `test_dict_cache_after_commit.py::test_atomic_false_still_swallows_a_key_builder_error_when_a_session_is_passed`（修前 `UnboundLocalError`），
 三条修前红、修后绿。`test_revoke_after_commit.py` 的先后断言改成记在最外层 `after_commit` 上（原来记在 `before_commit`，证明不了「提交成功之后」），修后照绿。
 
+## 通行密钥（Passkey / WebAuthn）登录
+
+`service/passkey_service.py` · `auth_service.passkey_login` · 表 `sys_user_passkey`（迁移 `av000000userpasskey`）· 依赖 `webauthn`（py_webauthn）。
+前端：登录页 `apps/web/src/routes/_guest/-passkey-sign-in.tsx` · 个人中心 `pages/profile/passkey-block.tsx` · 用户管理「安全」抽屉的「清除全部通行密钥」（超管）·
+浏览器侧 `packages/platform/src/auth/passkey.ts`（用原生的 WebAuthn L3 JSON 方法，不引 simplewebauthn）。
+
+配置：`PASSKEY_RP_ID` + `PASSKEY_ORIGINS` 两项都配才启用（`.env`，不在参数配置里）；prod 启动检查要求正式域名 + https、来源主机属于 RP ID（`core/conf.py: _check_passkey`）。
+
+| 设计 | 不这样做会怎样 |
+|---|---|
+| 只做**不先输用户名**的流程（可发现凭据，登录挑战不带 `allowCredentials`） | 先输用户名再要挑战，「这个账号有没有通行密钥」就从挑战里漏出去了（同手机登录的防枚举） |
+| 注册和登录都**要求用户验证（UV）** | 捡到一把没锁的安全钥匙就能登 |
+| 通行密钥登录**不再走二次验证**（`mfa_gate`），被强制开 MFA 的人也一样 | 带 UV 的通行密钥本身就是两个因素；再要动态码等于白做（这是刻意的） |
+| 挑战存 Redis、`GETDEL` 一次性 | 截下来的断言在挑战有效期内能重放 |
+| 失败对外一律「通行密钥无效」，原因只进日志；只计入 **IP** 失败，不计入账号 | 区分原因就是凭据核对器；按账号计等于谁都能把别人锁住 |
+| 唯一键是凭据 ID 的 sha256，不是凭据 ID | 凭据 ID 最长 1364 字符，MySQL utf8mb4 下唯一索引超长 |
+| RP ID / 来源**只从配置读**，不从请求头推 | 换个域名访问就是另一个站；钓鱼代理能改 Host |
+| 审计单独登记成「通行密钥」对象（名称 + 所属用户），钥匙材料和计数类列全忽略 | 一对多没法像二次验证那样折叠成用户上的开关；计数每次登录都写，记了就是刷屏 |
+
+### 🔴 本地开发要从 `localhost` 打开页面，不能用 `127.0.0.1`
+
+RP ID 不能是 IP：从 `http://127.0.0.1:8888` 打开时浏览器直接 `SecurityError: This is an invalid domain.`，界面上是「当前网址不能使用通行密钥」。
+而硬纪律里「浏览器要开 `127.0.0.1:8888`」（refresh cookie 跨站）那条依然成立 —— 所以开发 / 实测通行密钥时**前后端都换成 localhost**：
+后端 `PASSKEY_RP_ID=localhost PASSKEY_ORIGINS='["http://localhost:8888"]'`，前端 `VITE_API_BASE=http://localhost:8088`，页面开 `http://localhost:8888`。
+现有 E2E 全在 `127.0.0.1` 上，通行密钥没有进 E2E 套件（要单开一套 localhost 的配置）。
+
+### 🔴 ego 浏览器测不了 WebAuthn，用 Playwright Chromium + CDP 虚拟认证器
+
+ego（定制 Chromium）里 `navigator.credentials.create()` 3 毫秒就 `NotAllowedError`，加了 CDP 虚拟认证器、开了焦点模拟也一样 —— 它屏蔽了 WebAuthn。
+Playwright 自带的 Chromium 正常：`ctx.newCDPSession(page)` → `WebAuthn.enable` → `WebAuthn.addVirtualAuthenticator`
+（`ctap2` / `internal` / `hasResidentKey` / `hasUserVerification` / `isUserVerified` / `automaticPresenceSimulation`）。⚠️ 虚拟认证器按 CDP 会话生效，启用和使用要在同一个会话里。
+
+### 🔴 注册时的用户句柄要读库，不能读登录快照（浏览器实测抓到的）
+
+**症状**：个人中心「添加」成功，用它登录一律「通行密钥无效」，后端日志「userHandle 和它所属的用户对不上」。
+**根因**：注册时用户句柄（`user.uuid`）取自 `request.user` —— Redis 里的登录快照；登录时按凭据查库里的用户、拿库里的 uuid 比。
+本机几套库（`fba` / `fba_test` / 私有库）共用一个 Redis、管理员的雪花 ID 相同，快照里的 uuid 是别的库写进去的。正常部署不会两边不一致，但注册不该依赖缓存里的字段。
+**修法**：`passkey_service._from_db` 注册时从库里重读用户，**必须包 `bypass_data_scope()`** —— 已登录请求里 DAO 套着当前用户的数据范围，
+STAFF 这类「开了过滤、没有规则」的人连自己都查不到（同上面「用户快照」一节刷新 token 那条；第一版没包，测试成片 404）。
+**实测证据**：`test_registration_uses_the_uuid_in_the_database_not_the_cached_snapshot`（篡改 Redis 快照里的 uuid 再注册、登录）：
+改回用快照 → 这条红；去掉 `bypass_data_scope` → 18 条红。
+
+**实测证据**（2026-11-26，PostgreSQL 私有库 + Redis）：
+- `tests/api_v1/test_passkey.py` 28 条，浏览器那一侧是纯 Python 的软件认证器（P-256，按规范拼 authenticatorData / clientDataJSON / 签名），走真实接口和真的 py_webauthn 校验。
+  变异 12 处各自红：登录不要 UV · 来源放行任意 · 不核对 userHandle · 挑战不作废 · 仍走二次验证 · 失败计入账号 · 查无凭据换一句话 · 注册不要 UV ·
+  不查账号状态 · 公钥按普通列记审计 · 注册用快照 · 去掉 `bypass_data_scope`。
+  ⚠️ 第一版有两处变异没红：「挑战只能用一次」第二次交的是同一份断言（计数没增长，本来就会被拒）；「查无 / 已删同一句」只两者互比（它们走同一个分支）—— 改成新签的断言、和固定文案比之后才红
+- 浏览器（Playwright Chromium 1234 + CDP 虚拟认证器，真实前后端，localhost）9 步：登录页有按钮 → 密码登录 → 个人中心添加（认证器里多了一把 `rpId=localhost` 的可发现凭据）→
+  同一台设备再加被拒「已经添加过了」→ 清掉会话后用通行密钥登录进工作台，refresh cookie 可用 → 认证器拒绝用户验证时提示「已取消，或者等太久超时了」→
+  从 `127.0.0.1` 打开点按钮提示「当前网址不能使用通行密钥」→ 删除 → 删掉后再登录「通行密钥无效」
+- 迁移在 PostgreSQL 私有库上 up → down → up；MySQL / SQL Server 没在真库上跑过迁移（CI 的 SQL Server job 会跑模型 ↔ 迁移的一致性检查）
+
+**没验过**：真实平台认证器（Windows Hello / Touch ID / 安卓）· 手机扫码的跨设备（hybrid）流程 · Safari / Firefox · 桌面端和手机 App（入口隐藏：桌面端渲染层在 `app://local` 上，RP ID 对不上 —— 按规范推出，没实测）。
+
 ## 🔴 SQL Server：删用户 × 用户导入提交互相死锁（1205），删两个不同的人也会（#455）
 
 **症状**：SQL Server（RCSI 关着）上并发删用户、导入用户提交，其中一个 500：`(1205) … chosen as the deadlock victim`，

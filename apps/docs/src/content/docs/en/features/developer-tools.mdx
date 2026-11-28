@@ -7,10 +7,19 @@ sidebar:
 
 import shot from '../../../../../../../docs/screenshots/sandbox.png'
 import ProductShot from '../../../../components/ProductShot.astro'
+import DiagramFlow from '../../../../components/DiagramFlow.astro'
+import { flows } from '../../../../data/flows'
 
 Three things you reach for when writing business pages: the **component sandbox** shows every component in the library, lets you tweak its props and copy the code; the **component library** `packages/ui` depends on none of the repository's business packages and can be moved wholesale into another React project; the **frontend / backend contract** `packages/api` generates types offline from the backend's OpenAPI.
 
+This page first picks a component in the sandbox and copies its code, then the checks to run after changing a backend API, then porting the component library and common problems.
+
+<details>
+<summary>Show the component sandbox</summary>
+
 <ProductShot src={shot} alt="Component sandbox: Button" url="localhost:8888/sandbox/components" />
+
+</details>
 
 ## UI entry points
 
@@ -21,6 +30,28 @@ Three things you reach for when writing business pages: the **component sandbox*
 | Table playground | `/sandbox/table` | same |
 
 The **Developer tools** sidebar node is not in the menu table: the frontend adds it while the sandbox is on, so it uses no permission code and does not appear under Menus. **Whether the sandbox is on** is decided by `DEV_SANDBOX_ENABLED` in Config → **Advanced → Development**: the seed data sets it to `true`; if the key is missing, it is on in development and off in production. Turn it off in Config before going live if you don't want people to see it. The sandbox reads the switch through a dedicated endpoint that returns only those two booleans, so it does not need permission to view Config.
+
+## Quick start
+
+About three minutes:
+
+1. At the bottom of the sidebar open **Developer tools → Component sandbox** and pick Button on the left.
+2. In the knobs on the right set the variant to outline and the size to lg: the code in the middle gains just those two props — copy it straight into a page.
+3. Open the palette under the theme group, then switch the theme colour and dark mode in Profile and come back: the swatches follow — business code takes colours only from these tokens.
+4. After changing a backend API, run from the repository root:
+
+   ```bash
+   pnpm --filter @admin/api gen:api
+   pnpm typecheck --force
+   ```
+
+## After an API change
+
+<DiagramFlow {...flows.contract.en} />
+
+- **Generating the contract needs no running backend**: the script imports the backend app to get the OpenAPI, offline.
+- **The web app still relies on review**: its request return types are written by hand at each call, so a renamed backend field isn't caught by the type check; the mobile app infers everything from the contract, so a wrong field name fails at once.
+- **Run gates as `pnpm <task>`**, never with `--filter` on one package, or the other packages never get checked.
 
 ## Component sandbox
 
@@ -72,6 +103,32 @@ All run in CI and can be run locally:
 | `pnpm ctx:check` | Files, scripts and test IDs mentioned in each directory's `AGENTS.md` still exist |
 
 The background of these rules is in the "hard rules" section of the root [`CLAUDE.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/CLAUDE.md).
+
+## Troubleshooting
+
+### Developer tools missing
+
+Developer tools appear only while the sandbox is on. Check `DEV_SANDBOX_ENABLED` under **Config → Advanced → Development**: on in the seed data; if the key is missing, it's on in development and off in production.
+
+### Type check misleads
+
+Without `--force`, a turbo cache hit prints the **previous** run's log: it may report an error fixed long ago, or miss a new one. Before deleting code or calling something done, always run `pnpm typecheck --force`.
+
+### Web misses field changes
+
+Web requests aren't typed from the contract yet (`T` in `api.GET<T>(path)` is hand-written), so the web type check can't see a renamed backend field. After changing an API, search the web code for that field.
+
+### Ported buttons look unstyled
+
+`globals.css` wasn't brought along, or Tailwind's `@source` doesn't point at your own source — a wrong path raises no error, it just generates no styles. Work through the checklist in [`PORTING.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/ui/PORTING.md).
+
+### Pagination shows braces
+
+Symptom: the pagination bar shows `共 {{total}} 条` (a raw template).
+
+Cause: a component uses `react-i18next`'s `useTranslation()` directly with no i18next instance attached — bare `react-i18next` then returns the template as-is, while text without numbers looks fine.
+
+Fix: always use `useT()` from `packages/ui` in components, which interpolates even without an instance; or attach your own i18next as `PORTING.md` describes.
 
 ## Limitations
 

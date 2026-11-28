@@ -44,6 +44,7 @@ import { ThemeMenu } from "@/components/theme-menu"
 import { BRAND } from "@/lib/brand"
 import { DesktopServerForm, DesktopServerLine, needsDesktopServer } from "@/routes/_guest/-desktop-server"
 import { MfaStep } from "@/routes/_guest/-mfa-step"
+import { PasskeySignIn } from "@/routes/_guest/-passkey-sign-in"
 import { PublicNotices } from "@/routes/_guest/-public-notices"
 import { SignInBrandPanel, SignInBrandStrip } from "@/routes/_guest/-sign-in-brand"
 
@@ -381,7 +382,8 @@ function SignInPage() {
             ) : mfa ? (
               <MfaStep challenge={mfa} onDone={enter} onBack={leaveMfa} />
             ) : (
-            /* 两个面板给同一个 min-h：切登录方式时「欢迎回来」不会上下跳 */
+            <>
+            {/* 两个面板给同一个 min-h：切登录方式时「欢迎回来」不会上下跳 */}
             <Tabs value={method} onValueChange={(v) => setMethod(v as Method)} className="mt-7">
               {/* 下划线页签而不是胶囊组：胶囊是 shadcn 的默认长相，一眼就是模板 */}
               <TabsList variant="line" className="h-auto w-full justify-start gap-6 rounded-none border-b border-border p-0">
@@ -573,6 +575,9 @@ function SignInPage() {
                 </form>
               </TabsContent>
             </Tabs>
+            {/* 通行密钥：两种登录方式下面都有，不用先输用户名 */}
+            <PasskeySignIn onDone={enter} />
+            </>
             )}
 
             {!serverForm && <DesktopServerLine onChange={() => setServerForm(true)} />}

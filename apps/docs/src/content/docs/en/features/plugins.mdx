@@ -7,10 +7,21 @@ sidebar:
 
 import shot from '../../../../../../../docs/screenshots/plugin.png'
 import ProductShot from '../../../../components/ProductShot.astro'
+import DiagramFlow from '../../../../components/DiagramFlow.astro'
+import { flows } from '../../../../data/flows'
 
-The backend's plugin system comes from upstream [fastapi-best-architecture](https://github.com/fastapi-practices/fastapi_best_architecture) (FBA). Each plugin is a directory under `apps/api/backend/plugin/` with a `plugin.toml` saying what it is, where it mounts, which settings it needs, which plugins it depends on and which databases it supports; at start-up the backend scans these directories and wires in their routes, settings and hooks. Approvals, the AI assistant, the open platform, SMS and notifications are all plugins. **Since 1.0 the plugin interface is part of the compatibility promise**: `plugin.toml` fields, the `fba add` install flow and the extension points listed below will not change in breaking ways, so third-party plugins keep installing and running (see [Upgrading](/en/reference/upgrade/)).
+Approvals, the AI assistant, the open API, SMS and notifications are all plugins: each is a directory under `apps/api/backend/plugin/` with a `plugin.toml` saying what it is, which path it mounts on, what settings it needs and what it depends on. Plugins you don't need can be disabled or removed, and your own features can take the same shape. The mechanism comes from upstream [fastapi-best-architecture](https://github.com/fastapi-practices/fastapi_best_architecture) (FBA).
+
+**Since 1.0 the plugin interface is covered by the compatibility promise**: `plugin.toml` fields, the `fba add` install flow and the extension points below get no breaking changes, so third-party plugins keep installing and running (see [Upgrading](/en/reference/upgrade/)).
+
+This page first walks through the Plugins page and disabling / re-enabling a plugin, then the steps from dropping a plugin in to using it, then built-in plugins, `plugin.toml`, extension points and common problems.
+
+<details>
+<summary>Show the Plugins page</summary>
 
 <ProductShot src={shot} alt="Plugins" url="localhost:8888/system/plugin" />
+
+</details>
 
 ## UI entry points
 
@@ -20,6 +31,33 @@ The backend's plugin system comes from upstream [fastapi-best-architecture](http
 | Command line | `fba add` / `fba remove` | Whoever has server access | Install / uninstall plugins, including tables and seed data |
 
 Every Plugins endpoint is guarded by **superuser**, not a permission code.
+
+## Quick start
+
+See enabling and disabling locally, about three minutes:
+
+1. As a superuser open **System → Plugins**. Each card shows the plugin's description, version, dependencies, supported databases, and both its declared API prefix and where it actually mounted.
+2. Disable SMS (`sms`). No restart: open **SMS → SMS configurations** — the page is still there, but the list fails with `Plugin sms is not enabled, please contact the administrator`.
+3. Try disabling notifications (`notification`): it's refused, because the enabled notices and workflow plugins depend on it.
+4. Re-enable SMS; the configuration page works again.
+
+To install a third-party plugin, use the command line in development (it creates tables):
+
+```bash
+fba add --path ./my_plugin.zip    # or --repo-url <git URL>
+```
+
+Then restart the backend.
+
+## Activation order
+
+A plugin goes through these steps from being dropped in to being usable:
+
+<DiagramFlow {...flows.plugin.en} />
+
+- **Disabling refuses requests; it doesn't uninstall**: all routes are mounted at startup, and a disabled plugin's requests are refused after a status check. Tables, data and menus stay.
+- **Enabling and disabling check dependencies**: a plugin an enabled plugin depends on can't be disabled, a plugin whose dependencies are off can't be enabled, and the required plugin (`dict`) can't be disabled — otherwise the next backend restart would fail.
+- **Frontend pages don't appear by themselves**: plugins cover the backend only; wire a page in as described [below](#a-plugins-frontend-pages).
 
 ## Built-in plugins
 
@@ -84,6 +122,7 @@ It unzips or clones, appends `.env.example`, installs dependencies, creates the 
 
 - Disabling **takes effect immediately**: every plugin's routes are mounted at start-up and each request checks the plugin's status first, so a disabled plugin's endpoints return "Plugin X is not enabled, please contact the administrator" (HTTP 500).
 - A disabled plugin's AI tools disappear from the tool list; disabling `ai` also closes the MCP gateway.
+- Dependencies are checked first: a required plugin, or one an enabled plugin depends on, can't be disabled; when enabling, its dependencies must already be enabled.
 - Plugin start-up hooks (`setup` / `lifespan`) only run for plugins enabled at start-up, so that part needs a restart; a newly installed plugin's routes also appear only after a restart.
 - Disabling **does not hide menus**: those sidebar entries remain and their endpoints fail.
 
@@ -114,11 +153,50 @@ The frontend does **not** pick up a plugin's pages automatically. For a plugin t
 
 A menu whose path has no frontend route is skipped in the sidebar, with a console warning in development. The full "add a page" walkthrough is [Adding a business module from scratch](/en/guides/first-module/).
 
+## Troubleshooting
+
+### API says plugin not enabled
+
+Symptom: `Plugin X is not enabled, please contact the administrator`
+
+Cause: the plugin was disabled on the Plugins page. Its menus stay, so the page opens but data fails to load.
+
+Fix: a superuser re-enables it under **Plugins**; it applies at once.
+
+### Enable or disable refused
+
+| Message | Fix |
+|---|---|
+| `Plugin X is required and cannot be disabled` | `dict` is required |
+| `Plugin X is required by enabled plugins Y, disable them first` | Disable Y first |
+| `Plugin X depends on disabled plugins Y, enable them first` | Enable Y first |
+
+### Page install refused
+
+Symptom: `Installing plugins is only allowed in the development environment`
+
+Cause: installing online writes code and installs dependencies on the server, which is never allowed in production. Production plugins ship with the code.
+
+### Tables missing after install
+
+Cause: plugins installed from the Plugins page **don't create tables or run init SQL**.
+
+Fix: install with `fba add --path …` in development (it creates tables), or run the init script for your database from the plugin's `sql/` directory by hand, then restart the backend.
+
+### Backend won't start after install
+
+Symptom: the startup log shows a dependency cycle, or that plugin X depends on a plugin Y that doesn't exist.
+
+Fix: install the missing plugin, or fix `depends_on` in `plugin.toml`, then restart.
+
+### Plugin settings ignored
+
+`[settings]` in `plugin.toml` are only defaults; process environment variables and `.env` both win, and every change needs a restart. Keys written only in `plugin.toml` and not declared in `core/conf.py` can't be overridden by container environment variables — see [above](#plugintoml-fields).
+
 ## Limitations
 
 - Installing / uninstalling on the Plugins page creates no tables and runs no SQL; production cannot install plugins from the page.
 - Disabling a plugin does not hide its menus, and calls to a disabled plugin return 500 rather than a more fitting status.
-- The enable switch does not check required plugins, so `dict` can be disabled on the page.
 - When the Plugins page judges "supported databases", the current database is hard-coded as SQL Server instead of reading the actual `DATABASE_TYPE`.
 - The built-in `ai`, `sms` and `workflow` plugins have no `README.md`, so downloading their zip from the page and installing it again fails the "must have a README" check.
 - The plugin conventions are backend-only; frontend pages are wired by hand as in the four steps above.

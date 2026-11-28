@@ -6,8 +6,10 @@ from pyrate_limiter import Duration, Rate
 from starlette.background import BackgroundTasks
 
 from backend.app.admin.schema.mfa import MfaChallenge, MfaChallengeParam, MfaSetupInfo, MfaTokenParam
+from backend.app.admin.schema.passkey import GetPasskeyAvailability, PasskeyLoginOptions, PasskeyLoginParam
 from backend.app.admin.schema.token import GetLoginToken, GetMfaEnrollToken, GetNewToken, GetSwaggerToken
 from backend.app.admin.schema.user import AuthLoginParam, AuthPhoneCaptchaParam, AuthPhoneLoginParam
+from backend.app.admin.service import passkey_service
 from backend.app.admin.service.auth_service import auth_service
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
@@ -91,6 +93,49 @@ async def phone_login(
     background_tasks: BackgroundTasks,
 ) -> ResponseSchemaModel[GetLoginToken | MfaChallenge]:
     data = await auth_service.phone_login(
+        db=db, request=request, response=response, obj=obj, background_tasks=background_tasks
+    )
+    return response_base.success(data=data)
+
+
+# ── 通行密钥（Passkey / WebAuthn）登录：三个都是匿名接口 ──
+
+
+@router.get(
+    '/passkey/enabled',
+    summary='通行密钥登录开没开（登录页据此决定出不出按钮）',
+    dependencies=[Depends(RateLimiter(Rate(30, Duration.MINUTE)))],
+)
+async def passkey_enabled() -> ResponseSchemaModel[GetPasskeyAvailability]:
+    return response_base.success(data=GetPasskeyAvailability(enabled=passkey_service.enabled()))
+
+
+@router.post(
+    '/passkey/options',
+    summary='通行密钥登录：取挑战',
+    description=(
+        '不带用户名（可发现凭据）。`options` 原样交给浏览器的 PublicKeyCredential.parseRequestOptionsFromJSON()'
+    ),
+    dependencies=[Depends(RateLimiter(Rate(10, Duration.MINUTE)))],
+)
+async def passkey_login_options() -> ResponseSchemaModel[PasskeyLoginOptions]:
+    return response_base.success(data=await passkey_service.login_options())
+
+
+@router.post(
+    '/passkey/login',
+    summary='通行密钥登录：交断言',
+    description='通行密钥要求了用户验证（指纹 / 面容 / PIN），所以这条路不再走二次验证',
+    dependencies=[Depends(RateLimiter(Rate(10, Duration.MINUTE)))],
+)
+async def passkey_login(
+    db: CurrentSessionTransaction,
+    request: Request,
+    response: Response,
+    obj: PasskeyLoginParam,
+    background_tasks: BackgroundTasks,
+) -> ResponseSchemaModel[GetLoginToken]:
+    data = await auth_service.passkey_login(
         db=db, request=request, response=response, obj=obj, background_tasks=background_tasks
     )
     return response_base.success(data=data)

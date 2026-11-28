@@ -7,10 +7,17 @@ sidebar:
 
 import shot from '../../../../../../../docs/screenshots/file.png'
 import ProductShot from '../../../../components/ProductShot.astro'
+import DiagramFlow from '../../../../components/DiagramFlow.astro'
+import { flows } from '../../../../data/flows'
 
-The file module is a file manager (grid or list view, category rail, in-browser previews) on top of a storage layer that puts local disk and any S3-compatible bucket behind one [Apache OpenDAL](https://opendal.apache.org/) interface. Every upload goes through one global queue: the browser hashes the file with SHA-256 first and skips the transfer if the same file already exists; files of 16 MiB or more go up in 8 MiB chunks, three at a time, and resume after a page refresh. You can try it in the [live demo](https://fra.wubunan.com/sign-in) (`admin` / `123456`).
+Files is a file manager with in-browser preview: upload, preview, download and the recycle bin all live on one page. Files can sit on the server's disk or in any S3-compatible object storage (MinIO, RustFS, Alibaba Cloud OSS…), and switching storage needs no code change. Large files upload in chunks and resume after a page refresh; the same file is never uploaded twice.
+
+<details>
+<summary>Show the file manager</summary>
 
 <ProductShot src={shot} alt="Files" url="localhost:8888/system/file" />
+
+</details>
 
 ## UI entry points
 
@@ -24,6 +31,27 @@ The file module is a file manager (grid or list view, category rail, in-browser 
 | Upload tray, bottom right | — | — | The global upload queue; see [What is the upload tray?](#upload-tray) |
 
 Download, preview, direct-link and instant-upload checks only require a sign-in; whether a given file can be read is decided by the rules in [How do downloads work?](#downloads).
+
+## Quick start
+
+No configuration needed — walk through it on the built-in local storage first:
+
+1. Sign in as an admin, open **System → Files**, click upload and pick a PDF or an image. The upload tray in the bottom-right corner shows progress; when it finishes the file appears in the list.
+2. Click the file to preview it. PDFs, Office documents, images, audio and video open in the browser without downloading.
+3. Upload the same file again (same name, same content). The tray says `An identical file already exists; reused it` and **no new row appears** — that is instant upload: not a single byte was sent.
+4. Delete it, then restore it from the recycle bin.
+
+To move to object storage, set `STORAGE_ENCRYPT_SECRET_KEY` in `.env` and restart the backend, then create an S3 storage under **System → Storage**, run *Test connection*, and *Set as default*. New uploads go to that bucket from then on; existing files stay where they are and keep working. To try S3 on your machine see [below](#trying-s3-locally).
+
+## Processing order
+
+Every file goes through these steps between being picked and showing up in the list:
+
+<DiagramFlow {...flows.upload.en} />
+
+- **Instant upload matches on same person + same name + same content + same storage**: renaming the file uploads a new copy, and files in the recycle bin are never reused.
+- **Checks run on the server**: the extension allowlist and per-type size limits (5 MB for images and 50 MB for documents by default). The browser does not pre-check; a rejected file shows as failed in the tray, with the reason.
+- **A refresh does not lose progress**: a chunked upload's session lives on the server for 24 hours, and picking the same file again only sends the missing parts.
 
 ## Preview formats
 
@@ -42,6 +70,9 @@ Grid thumbnails use the original image only for non-SVG images of 1 MB or less, 
 
 Switching the default only affects new uploads. Reads, deletes and signed URLs always use the storage recorded on the file. A storage that still holds files, including ones in the recycle bin, cannot be deleted. The S3 SecretKey is encrypted with `STORAGE_ENCRYPT_SECRET_KEY`; if that key is empty, saving an S3 storage fails instead of storing plaintext.
 
+<details>
+<summary>Two required S3 client options and endpoint limits (developers)</summary>
+
 Every OpenDAL S3 operator is built with these two options, and both are needed:
 
 ```python
@@ -50,6 +81,8 @@ Every OpenDAL S3 operator is built with these two options, and both are needed:
 ```
 
 Saving a storage rejects endpoints that resolve to link-local, unspecified or multicast addresses such as `169.254.169.254`. *Test connection* sends requests from the server, so without this check it could be used for SSRF. Private-network hosts are allowed, because MinIO on the LAN is the most common setup.
+
+</details>
 
 :::note
 Addressing `auto` switches to virtual-host style for Alibaba OSS, Tencent COS, Qiniu, Huawei OBS and Volcengine endpoints. That rule follows the vendors' documentation. It has not been tested against real accounts on those clouds; the S3 tests run against moto and RustFS.
@@ -114,6 +147,70 @@ docker compose -f docker-compose.dev.yml --profile s3 up -d rustfs   # S3 API on
 ```
 
 Set `STORAGE_ENCRYPT_SECRET_KEY` in `apps/api/backend/.env` (`openssl rand -hex 32`). Then add a storage with endpoint `http://127.0.0.1:9100`, a bucket you created, the access key pair from `docker-compose.dev.yml`, and path-style addressing (RustFS without `server-domains` only accepts path style).
+
+## Troubleshooting
+
+### Unsupported file format
+
+Symptom: `File format exe is not supported`
+
+Cause: each category (images, documents, audio / video, archives) has an extension allowlist; anything else is refused.
+
+Fix: if you really need to accept that type, add the extension to the matching `UPLOAD_*_EXT_INCLUDE` in `.env` and restart the backend.
+
+### File over the size limit
+
+Symptom: `Document exceeds the size limit of 50 MB, please choose another one`
+
+Fix: limits are per type (5 MB images, 50 MB documents, 20 MB audio / video, 100 MB archives by default); change the matching `UPLOAD_*_SIZE_MAX` (in bytes) in `.env` and restart. Behind nginx, `client_max_body_size` also applies to single-request uploads; chunked uploads send 8 MiB per request and are not affected.
+
+### Saving an S3 storage fails
+
+Symptom: `STORAGE_ENCRYPT_SECRET_KEY is not configured, the object storage secret cannot be stored safely`
+
+Cause: the S3 secret key is encrypted before it is stored; without the key the backend refuses rather than store it in plain text.
+
+Fix:
+
+1. Generate a 64-character hex key: `openssl rand -hex 32`.
+2. Put it in `STORAGE_ENCRYPT_SECRET_KEY` in `apps/api/backend/.env`, restart the backend and save again.
+
+⚠️ Don't change this key once it is set: saved S3 storages can no longer decrypt their secret, and each one has to be re-entered.
+
+### Test connection fails
+
+Symptom: one of the messages below; the reason is in the message:
+
+| Message | Check first |
+|---|---|
+| `Cannot reach the endpoint, check the address, port and network` | Whether the **backend server** can reach the address (not your browser) |
+| `Invalid credentials, or no read/write permission` | Access key / secret key and the bucket policy |
+| `The bucket does not exist, or the key prefix is not writable` | The bucket name; on self-hosted MinIO / RustFS create the bucket first |
+| `The endpoint points to a link-local / cloud metadata address and was rejected` | The endpoint is a `169.254.x.x`-style address; this is a security rule, use the real storage address |
+
+If a self-hosted MinIO / RustFS passes the test but uploads fail, switch the addressing to path style.
+
+### Cannot delete a storage
+
+Symptom: `The storage still holds 3 files and cannot be deleted` or `The default storage cannot be deleted, switch the default to another storage first`
+
+Fix: make another storage the default first, then delete the files on this one and empty the recycle bin (files in the recycle bin count too).
+
+### Resume says the session expired
+
+Symptom: `Upload session not found or expired, please upload again`
+
+Cause: a chunked upload session expires after 24 hours without activity, and the daily 04:00 cleanup deletes its parts.
+
+Fix: upload again. For a longer window change `FILE_MULTIPART_EXPIRE_SECONDS` in `.env`.
+
+### Others cannot open my file
+
+Symptom: the other person gets `File does not exist`.
+
+Cause: a private file can be read only by its uploader, holders of `sys:file:list`, and people a business module (notices, approvals) says may see it. Everyone else is told it doesn't exist rather than "no permission", so the response doesn't reveal that the file exists.
+
+Fix: attach the file to a notice or an approval request and let that record decide who can see it, or grant the person `sys:file:list`.
 
 ## Settings
 

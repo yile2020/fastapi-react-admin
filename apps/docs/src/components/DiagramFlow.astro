@@ -1,0 +1,114 @@
+---
+/**
+ * 功能页里的「处理顺序」图：一条主路径从左到右，某一步没过时从它下面垂下一条虚线，指向那种情况的结果。
+ * 读者要的是「为什么我被拒了 / 这一步算不算失败次数」—— 一张图比散在几段里的文字快。
+ *
+ * 图宽 ≥ 46rem：步骤排成一行，分支挂在对应步骤正下方；窄屏：竖着排，分支缩进挂在步骤下面。
+ * 文字走 props，数据放 `src/data/flows.ts`（中英文各一份），页面里只写一行 —— 原因见 DiagramRequestFlow。
+ */
+interface Branch {
+  /** 虚线上的那几个字：什么情况下走这条 */
+  when: string
+  name: string
+  sub?: string
+  /** 'ok'：这条岔路是好事（如秒传命中、直接复用），画成绿色；默认是失败 / 被拒，橙色 */
+  tone?: 'ok'
+}
+interface Step {
+  name: string
+  sub?: string
+  branch?: Branch
+}
+interface Props {
+  steps: Step[]
+  /** 走完主路径的结果 */
+  end: { name: string; sub?: string }
+  caption?: string
+}
+const { steps, end, caption } = Astro.props
+const cols = steps.length + 1
+---
+
+<figure class="dflow not-content" style={`--cols: ${cols}`}>
+  <ol>
+    {steps.map((step) => (
+      <li class:list={['dflow-col', { 'dflow-col--branch': !!step.branch }]}>
+        <div class="dflow-node">
+          <strong>{step.name}</strong>
+          {step.sub && <small>{step.sub}</small>}
+        </div>
+        {step.branch && (
+          <div class:list={['dflow-branch', { 'dflow-branch--ok': step.branch.tone === 'ok' }]}>
+            <span class="dflow-when">{step.branch.when}</span>
+            <div class="dflow-out">
+              <strong>{step.branch.name}</strong>
+              {step.branch.sub && <small>{step.branch.sub}</small>}
+            </div>
+          </div>
+        )}
+      </li>
+    ))}
+    <li class="dflow-col dflow-col--end">
+      <div class="dflow-node dflow-node--end">
+        <strong>{end.name}</strong>
+        {end.sub && <small>{end.sub}</small>}
+      </div>
+    </li>
+  </ol>
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>
+
+<style>
+  /* 按图自己的宽度切横竖排，不按视口：同样 1024 宽的屏，正文只剩六百多 px，六列英文会挤成一字一行 */
+  .dflow { margin: 1.75rem 0; container-type: inline-size }
+  ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 1.6rem; grid-template-columns: minmax(0, 1fr) }
+  .dflow-col { position: relative; margin: 0; min-width: 0 }
+  .dflow-node, .dflow-out {
+    display: flex; flex-direction: column; gap: 0.2rem; padding: 0.6rem 0.75rem;
+    border-radius: 0.6rem; text-align: center;
+  }
+  .dflow-node { position: relative; background: var(--sl-color-black); box-shadow: inset 0 0 0 1px var(--line-strong) }
+  .dflow-node--end { background: var(--diagram-hl-bg); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sl-color-accent) 55%, transparent) }
+  .dflow-node--end strong { color: var(--sl-color-accent-high) }
+  strong { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--sl-color-white); line-height: 1.4 }
+  small { font-size: var(--fs-2xs); line-height: 1.5; color: var(--sl-color-gray-3) }
+
+  /* 主路径的箭头：窄屏朝下，宽屏朝右。箭头挂在节点上，不挂在列上 —— 列底下还吊着分支 */
+  .dflow-col:not(:last-child) > .dflow-node::after {
+    content: '↓'; position: absolute; left: 50%; bottom: -1.4rem; transform: translateX(-50%);
+    font-size: var(--fs-sm); line-height: 1; color: var(--sl-color-gray-3);
+  }
+  .dflow-col--branch:not(:last-child) > .dflow-node::after { content: none }
+  .dflow-col--branch:not(:last-child)::after {
+    content: '↓'; position: absolute; left: 50%; bottom: -1.4rem; transform: translateX(-50%);
+    font-size: var(--fs-sm); line-height: 1; color: var(--sl-color-gray-3);
+  }
+
+  /* 分支：虚线 + 说明 + 虚线框。颜色用中性灰加 Starlight 的橙色，紫色只留给终点 */
+  .dflow-branch { display: grid; justify-items: center; margin: 0.15rem 0 0 1.5rem }
+  .dflow-when {
+    display: flex; flex-direction: column; align-items: center;
+    font-size: var(--fs-2xs); color: var(--sl-color-gray-3); line-height: 1.5;
+  }
+  .dflow-when::before, .dflow-when::after { content: ''; width: 0; height: 0.6rem; border-left: 1px dashed var(--sl-color-orange) }
+  .dflow-out { width: 100%; box-sizing: border-box; border: 1px dashed var(--sl-color-orange); background: var(--sl-color-orange-low) }
+  .dflow-out strong { color: var(--sl-color-orange-high) }
+  .dflow-branch--ok .dflow-when::before, .dflow-branch--ok .dflow-when::after { border-left-color: var(--sl-color-green) }
+  .dflow-branch--ok .dflow-out { border-color: var(--sl-color-green); background: var(--sl-color-green-low) }
+  .dflow-branch--ok .dflow-out strong { color: var(--sl-color-green-high) }
+
+  @container (min-width: 46rem) {
+    /* 两行：节点一行、分支一行。列用 subgrid 共享行高，一排节点等高，分支都从同一条线垂下来 */
+    ol { grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); grid-template-rows: auto auto; column-gap: 1.1rem; row-gap: 0 }
+    .dflow-col { display: grid; grid-row: span 2; grid-template-rows: subgrid }
+    .dflow-node { justify-content: center }
+    .dflow-col:not(:last-child) > .dflow-node::after,
+    .dflow-col--branch:not(:last-child) > .dflow-node::after {
+      content: '→'; left: auto; bottom: auto; right: -0.95rem; top: 50%; transform: translateY(-50%);
+    }
+    .dflow-col--branch:not(:last-child)::after { content: none }
+    .dflow-branch { margin: 0; align-self: start }
+    .dflow-when::before, .dflow-when::after { height: 0.9rem }
+  }
+  figcaption { margin-top: 0.9rem; text-align: center; font-size: var(--fs-sm); color: var(--sl-color-gray-3) }
+</style>

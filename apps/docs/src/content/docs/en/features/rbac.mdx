@@ -7,21 +7,50 @@ sidebar:
 
 import shot from '../../../../../../../docs/screenshots/role.png'
 import ProductShot from '../../../../components/ProductShot.astro'
+import DiagramFlow from '../../../../components/DiagramFlow.astro'
+import { flows } from '../../../../data/flows'
 
-Permissions rest on four tables and four screens: **departments** form a tree, a **user** belongs to one department and can have several roles, a **role** grants **menus** and buttons, and the menu table decides both what the sidebar shows and which permission code each button needs. This page covers how to operate those screens and their limits; how permission codes and data scopes are evaluated on the server is in [Data permissions](/en/features/data-permissions/).
+Giving a new colleague an account that shows the right menus and allows the right actions takes four screens: **departments** form a tree, a **user** belongs to one department and can hold several roles, a **role** ticks which menus and buttons it may use, and **menus** define both the sidebar and the permission code each button needs.
 
-<ProductShot src={shot} alt="Roles: the permission matrix" url="localhost:8888/system/role" />
+This page first builds a working account from scratch, then shows how a request can be stopped at the account, department and role levels, then the rules of each screen and common problems. Which rows someone sees (data scopes) is covered in [Data permissions](/en/features/data-permissions/).
+
+<details>
+<summary>Show the role permission matrix</summary>
+
+<ProductShot src={shot} alt="Roles: permission matrix" url="localhost:8888/system/role" />
+
+</details>
 
 ## UI entry points
 
 | Screen | Path | Needed to open the page | Other permission codes |
 |---|---|---|---|
-| **System → Users** | `/system/user` | `sys:user:del` | View `sys:user:list` · export `sys:user:export`. Create, edit, change permissions, reset password, reset two-factor and import are **superuser only** |
-| **System → Roles** | `/system/role` | `sys:role:add` | View `sys:role:list` · edit and add / remove members `sys:role:edit` · change permissions `sys:role:menu:edit` · change data scopes `sys:role:scope:edit` · delete `sys:role:del` |
-| **System → Departments** | `/system/dept` | `sys:dept:add` | View `sys:dept:list` · edit `edit` · delete `del` · import `sys:dept:import` · export `sys:dept:export` |
-| **System → Menus** | `/system/menu` | `sys:menu:add` | View `sys:menu:list` · edit `edit` · delete `del` |
+| **System → Users** | `/system/user` | `sys:user:list` | View `sys:user:list` · export `sys:user:export`. Create, edit, change permissions, reset password, reset two-factor and import are **superuser only** |
+| **System → Roles** | `/system/role` | `sys:role:list` | View `sys:role:list` · edit and add / remove members `sys:role:edit` · change permissions `sys:role:menu:edit` · change data scopes `sys:role:scope:edit` · delete `sys:role:del` |
+| **System → Departments** | `/system/dept` | `sys:dept:list` | View `sys:dept:list` · edit `edit` · delete `del` · import `sys:dept:import` · export `sys:dept:export` |
+| **System → Menus** | `/system/menu` | `sys:menu:list` | View `sys:menu:list` · edit `edit` · delete `del` |
 
-⚠️ The "needed to open the page" column is what the frontend route guards check today: all four check a **create or delete** code, not the view code. A role with only the view code is redirected to 403. The seed MANAGER role has the Users and Departments menus and both view codes, but neither `sys:user:del` nor `sys:dept:add`. The E2E suite ran into this ([`e2e/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/AGENTS.md): a test role without the Departments buttons lands on `/403` when opening the department page). Superusers are not subject to route guards.
+The "needed to open the page" column is the code the frontend route guard checks — each page's **query** code. A role with the menu ticked but not its query button is redirected to 403. Superusers skip route guards.
+
+## Quick start
+
+Give a new colleague an account that manages departments, about five minutes:
+
+1. **System → Roles**: create a role "Department admin" with code `DEPT_ADMIN` (the code can't be changed later), and **turn off Enable data-scope filtering** — it's on by default, and a role with filtering on but no data scope sees no rows at all (see [Data permissions](/en/features/data-permissions/#no-rows-at-all)).
+2. Select it, open **Permissions**, tick **System → Departments** and its query, create and edit buttons, and save. Query opens the page; the other buttons decide what can be done.
+3. **System → Users**: create the user (superusers only) — pick the department, the "Department admin" role and an initial password that passes the password rules.
+4. On that user's row open **Permissions & security** and turn **Admin sign-in** on. **New users have it off**; without it they can sign in and look, but every save is refused.
+5. Sign in as the new account: the sidebar shows only Departments, and departments can be created and edited.
+
+## Processing order
+
+Each request checks the account in this order; only after all of them pass do data scopes apply:
+
+<DiagramFlow {...flows.account.en} />
+
+- **Disabling takes effect at once**: disabling a user ends all their sessions; disabling a department or role refuses its users on their next request, without waiting for a new sign-in.
+- **Permission changes need a page refresh**: the backend applies them from the next request, but the menus and buttons cached in the browser don't change by themselves until the page is refreshed.
+- **Page guards and APIs are separate gates**: the frontend decides which menus and buttons to show by permission code, and every API checks again on its own. A hidden button doesn't mean the API is unchecked, and vice versa.
 
 ## Superuser and admin sign-in
 
@@ -112,9 +141,52 @@ Almost everything on these four screens is configured in the UI. Related setting
 
 Step 7 of [Adding a business module from scratch](/en/guides/first-module/#7-add-menus-and-permissions) describes both ways: for local experiments, create the directory, menu and buttons by hand under Menus; to ship them with the code, add the menu rows to the seed SQL for all three databases (same IDs), write a data migration, run `pnpm seed:manifest --write`, and `test_permission_codes.py` checks that the backend guards, the frontend `<Can perm>` gates and the seed menus agree.
 
+## Troubleshooting
+
+### New account can't save anything
+
+Symptom: `This account is not allowed to perform admin operations, please contact the administrator`
+
+Cause: the user's **Admin sign-in** is off — the default for created and imported users. With it off they can sign in and read, but every create, update and delete is refused.
+
+Fix: a superuser turns **Admin sign-in** on under **Permissions & security** on the user's row.
+
+### No menu assigned
+
+Symptom: `No menu assigned to this account, please contact the administrator`
+
+Cause: none of their roles ticks a menu — or all their roles are disabled (`The role assigned to this account is disabled, please contact the administrator`).
+
+Fix: tick menus on the role in Roles, or enable the role, or assign another.
+
+### Menu ticked, page refused
+
+Symptom: clicking the menu lands on *Access denied*.
+
+Cause: the menu is ticked but its "query" button isn't. Page guards check the page's query code (see [above](#ui-entry-points)); the menu itself carries no code.
+
+Fix: tick "query" under that menu in the role's Permissions.
+
+### Menu gone from the sidebar
+
+Check in order: the menu or **any parent folder** is disabled (disabling a folder takes its whole branch); the menu is set to hidden; its path has no matching frontend route (Menus flags it as a dead link); their roles don't tick it.
+
+### A whole department locked out
+
+Symptom: `The department of this account is disabled, please contact the administrator`
+
+Cause: the department was disabled. Only people **directly** in it are affected; sub-departments are not.
+
+Fix: re-enable it under Departments.
+
+### Department can't be deleted
+
+Symptom: `This department has users and cannot be deleted` or `This department has sub-departments and cannot be deleted`
+
+Fix: move its people elsewhere and delete or move its sub-departments first.
+
 ## Known issues
 
-- The four screens' frontend route guards check create / delete codes rather than the view code; see [above](#ui-entry-points).
 - Users created by hand or by import start without Admin sign-in and cannot save anything after their first sign-in; the switch's UI description does not match its behaviour, see [above](#superuser-and-admin-sign-in).
 - The user delete dialog says it cannot be undone; deletion is actually logical, there is just no restore.
 - Data scopes have no "my department and all below" template; see [Data permissions](/en/features/data-permissions/#limitations).

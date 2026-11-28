@@ -8,6 +8,7 @@ from functools import cache
 from pathlib import Path
 from re import Pattern
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
@@ -137,6 +138,10 @@ class Settings(BaseSettings):
         f'{FASTAPI_API_V1_PATH}/auth/mfa/verify',
         f'{FASTAPI_API_V1_PATH}/auth/mfa/setup',
         f'{FASTAPI_API_V1_PATH}/auth/mfa/enroll',
+        # 通行密钥登录的三个匿名接口：登录页问「开没开」、取挑战、交断言。同手机登录，精确匹配
+        f'{FASTAPI_API_V1_PATH}/auth/passkey/enabled',
+        f'{FASTAPI_API_V1_PATH}/auth/passkey/options',
+        f'{FASTAPI_API_V1_PATH}/auth/passkey/login',
         # 登录页的公告（#190，通知公告插件）：本来就不需要登录，放进来是为了浏览器里留着一个**过期**的 token 时
         # 登录页照样拉得到 —— 不放的话带着坏 token 的请求先被 JWT 中间件 401，公告区一直显示「加载失败」
         f'{FASTAPI_API_V1_PATH}/sys/notices/public',
@@ -188,6 +193,17 @@ class Settings(BaseSettings):
     MFA_CHALLENGE_ATTEMPTS: int = 5
     # 扫了码还没确认的那把密钥在 Redis 里放多久
     MFA_SETUP_SECONDS: int = 60 * 10
+
+    # 通行密钥（Passkey / WebAuthn）登录。两项都配上才启用，空 = 不启用（登录页不出按钮、接口回「未启用」）。
+    # 🔴 不从请求头推断：凭据绑在 RP ID 上，按 Host 推的话换个域名访问就是另一个站，钓鱼代理也能改 Host。
+    # 🔴 RP ID 不能是 IP（浏览器直接拒：SecurityError: This is an invalid domain）—— 本地开发要从 localhost 打开页面，
+    # 不能用 127.0.0.1，见 app/admin 分册「通行密钥」一节
+    PASSKEY_RP_ID: str = ''  # 站点域名，不带协议和端口：example.com · 本地开发 localhost
+    PASSKEY_ORIGINS: list[str] = []  # 页面来源，带协议和端口：["https://example.com"] · ["http://localhost:8888"]
+    PASSKEY_RP_NAME: str = ''  # 认证器上显示的站点名；空 = FASTAPI_TITLE
+    PASSKEY_REDIS_PREFIX: str = 'fba:passkey'
+    PASSKEY_CHALLENGE_SECONDS: int = 60 * 5  # 一次注册 / 登录的挑战有效期
+    PASSKEY_MAX_PER_USER: int = 10
 
     # JWT
     JWT_USER_REDIS_PREFIX: str = 'fba:user'
@@ -939,6 +955,26 @@ def _check_import_default_password(s: Settings) -> str | None:
     return None
 
 
+def _check_passkey(s: Settings) -> str | None:
+    """通行密钥：RP ID 和来源都配了才启用。prod 下来源必须是 https、主机必须是 RP ID 本身或它的子域"""
+    rp_id = (getattr(s, 'PASSKEY_RP_ID', '') or '').strip().lower()
+    origins = list(getattr(s, 'PASSKEY_ORIGINS', []) or [])
+    if not rp_id and not origins:
+        return None
+    if not rp_id or not origins:
+        return 'PASSKEY_RP_ID 和 PASSKEY_ORIGINS 要一起配（只配一个等于没启用，登录页也不会出按钮）'
+    if rp_id.replace('.', '').isdigit() or ':' in rp_id or rp_id == 'localhost':
+        return f'PASSKEY_RP_ID={rp_id!r} 在 prod 必须是正式域名（不能是 IP / localhost / 带端口）'
+    for origin in origins:
+        parsed = urlparse(origin)
+        host = (parsed.hostname or '').lower()
+        if parsed.scheme != 'https':
+            return f'PASSKEY_ORIGINS 里的 {origin!r} 在 prod 必须是 https'
+        if host != rp_id and not host.endswith(f'.{rp_id}'):
+            return f'PASSKEY_ORIGINS 里的 {origin!r} 不属于 PASSKEY_RP_ID={rp_id!r}（主机得是它本身或它的子域）'
+    return None
+
+
 def _check_webhook_private_network(s: Settings) -> str | None:
     """打开它 = Webhook 投递能打到回环 / 内网地址（SSRF），而端点 URL 是有权限的管理员随手填的（#167）"""
     if getattr(s, 'OPEN_WEBHOOK_ALLOW_PRIVATE_NETWORK', False):
@@ -1031,6 +1067,7 @@ def check_production_settings(s: Settings) -> None:
         _check_import_default_password(s),
         _check_webhook_private_network(s),
         _check_bot_url_prefixes(s),
+        _check_passkey(s),
     ))
 
     found = [p for p in problems if p]

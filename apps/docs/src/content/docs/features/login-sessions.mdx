@@ -5,8 +5,12 @@ description: 查看已登录设备、强制下线，并设置网页、桌面和�
 
 import online from '../../../../../../docs/screenshots/online.png'
 import ProductShot from '../../../components/ProductShot.astro'
+import DiagramFlow from '../../../components/DiagramFlow.astro'
+import { flows } from '../../../data/flows'
 
-每次登录都会创建一个服务端会话。本页介绍怎么查看已登录的设备、让指定会话下线，以及调整多久不操作就退出。
+每次登录都会在服务端建一个会话：谁在哪台设备上登着、多久没操作、还能用多久，都看得到，也能随时让它下线。网页、桌面、手机三端各有一套时长和设备数上限，在参数配置里改。
+
+本页先讲怎么查看和踢掉一个会话，再讲一个会话从登录到结束会在哪些地方被结束、对方会看到什么提示，最后是常见问题。
 
 ## 查看与结束会话
 
@@ -24,6 +28,12 @@ import ProductShot from '../../../components/ProductShot.astro'
 <ProductShot src={online} alt="在线用户：账号、设备、实时连接状态与剩余有效期" url="localhost:8888/monitor/online" />
 
 </details>
+
+## 会话的一生
+
+一个会话从登录到结束，会在下面这些地方被结束：
+
+<DiagramFlow {...flows.session.zh} />
 
 ## 时长与设备上限
 
@@ -68,6 +78,32 @@ access token 30 分钟过期，靠 refresh token 续；refresh token 每用一�
 </details>
 
 会话原子操作使用单实例 Redis 的 Lua 脚本，尚未在 Redis Cluster 上实测。
+
+## 常见问题
+
+### 每半小时被登出一次
+
+最常见的原因是续期用的 cookie 没存下来：站点是 http，却在 `.env` 里写了 `COOKIE_SECURE=true`（浏览器只在 https 下保存 Secure cookie）；或者前面的代理终结了 https、又把 `X-Forwarded-Proto` 改写成 `http`。默认值（留空）会跟着请求是不是 https 自动决定，大多数部署不用改；https 生产站点建议显式设成 `true`。
+
+### 登录提示设备已达上限
+
+现象：`该账号在网页端上的登录设备已达上限（1 台），请先在其他设备上退出`
+
+原因：参数配置「会话策略」里这一端设了会话上限，超限策略选的是「拒绝新登录」。
+
+处理：先在别的设备上退出，或者让管理员在「在线用户」里踢掉旧会话；也可以把超限策略改回「挤掉最久没活跃的」。
+
+### 手机登录挤掉另一台
+
+移动端的会话上限默认是 1：同一账号在第二台手机上登录，第一台会收到 `账号已在其他设备登录，本设备已下线`。要允许多台，在「会话策略」里调大移动端的上限。
+
+### 踢下线后对方页面没变
+
+对方的页面没有实时连接时（比如网络断了、浏览器在后台被挂起），要等他的下一次请求才会回到登录页，提示 `你已被管理员强制下线，请重新登录`。会话在服务端已经结束，那之后的任何请求都不会成功。
+
+### 看不到在线用户
+
+查询会话和强制下线只给超级管理员，给角色授予「在线用户」菜单不够。
 
 ## 在线体验
 

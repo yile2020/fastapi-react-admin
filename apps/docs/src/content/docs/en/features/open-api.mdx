@@ -7,10 +7,19 @@ sidebar:
 
 import shot from '../../../../../../../docs/screenshots/open-app.png'
 import ProductShot from '../../../../components/ProductShot.astro'
+import DiagramFlow from '../../../../components/DiagramFlow.astro'
+import { flows } from '../../../../data/flows'
 
-The open API plugin lets another system, such as an HR, finance or data-warehouse system, pull users and departments from fastapi-react-admin over `/api/open/v1`, and receive signed webhooks when they change. Each external system gets its own application with an Access Key / Secret Key pair. Every request is signed with HMAC-SHA256 (`FRA1-HMAC-SHA256`) and checked against the application's scopes, IP allow-list, expiry and rate limit. Every request is also written to a call log, whether it succeeds or not.
+Let other systems (HR, finance, a data warehouse…) pull users and departments from here safely: each connected system gets its own key pair (AK / SK), every request is signed, and changes can be pushed to them as webhooks. They call a separate set of APIs, `/api/open/v1`, that carries a long-term compatibility promise — internal back-office APIs can change without affecting them. Provided by the open API plugin (`plugin/open`).
 
-<ProductShot src={shot} alt="Open platform: applications" url="localhost:8888/open/app" />
+This page first issues a key pair and gets a first signed request through, then shows the checks a request passes and what each failure returns, followed by incremental sync, webhooks and common problems.
+
+<details>
+<summary>Show application management</summary>
+
+<ProductShot src={shot} alt="Open API: applications" url="localhost:8888/open/app" />
+
+</details>
 
 ## UI entry points
 
@@ -19,6 +28,36 @@ The open API plugin lets another system, such as an HR, finance or data-warehous
 | **Open platform → Applications** | `/open/app` | `open:app:list`; create `add` · edit `edit` · delete `del` · reset key `reset` | Issue AK/SK; set scopes, IP allow-list, rate limit, expiry, enable / disable |
 | Webhook drawer on each application | — | `open:webhook:list`; `add` · `edit` · `del` · `test` · `reset` (signing secret) · `resend` | Register endpoints, subscribe to events, view deliveries, resend in bulk |
 | Open API call log (opened from the Applications page, not in the sidebar) | `/open/log` | `open:log:list` | Every open API call; see [What does the call log record?](#call-log) |
+
+## Quick start
+
+Get a first request through locally, about ten minutes:
+
+1. Set `OPEN_SECRET_KEY` in `.env` (`openssl rand -hex 32`) and restart the backend, or creating an application is refused.
+2. Open **Open platform → Applications**, create an application and tick the `user:read` scope. The Secret Key in the dialog is **shown only once** — copy it now.
+3. Copy [`fra_open_sign.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/open/sdk/python/fra_open_sign.py) into your project (one file, standard library only), then:
+
+   ```python
+   import requests
+   from fra_open_sign import sign_headers
+
+   url = 'http://127.0.0.1:8088/api/open/v1/users?limit=10'
+   resp = requests.get(url, headers=sign_headers('GET', url, b'', access_key=AK, secret_key=SK))
+   print(resp.json())
+   ```
+
+4. Back on the applications page, open this application's call log: the call is `ok`, with the row count and duration.
+5. Change one character of the SK and call again: you get a 401 whose `data.string_to_sign` is the string the server built — whenever your own signing doesn't match, compare against it line by line.
+
+## Processing order
+
+Every open API request is checked in this order; a failed step stops there:
+
+<DiagramFlow {...flows.openApi.en} />
+
+- **Failures are logged too**: even a request whose AK can't be recognised gets a call-log row (with no application). When integrating, read the failure code there first.
+- **Rate limits are per application**, not per IP: several machines calling with one application share the per-minute budget (120 by default).
+- **The allowlist sees the real source IP**: behind nginx or a load balancer, add the proxy addresses to `TRUSTED_PROXIES`, or the allowlist sees only the proxy.
 
 ## Available endpoints
 
@@ -160,6 +199,49 @@ To guard against SSRF, receiving URLs must be https. The hostname is resolved ag
 | Java 11+ | [`sdk/java/FraOpenSign.java`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/open/sdk/java/FraOpenSign.java) | `signHeaders`, `verifyWebhook` |
 
 Each one is a single file that uses only the standard library; copy it into your project. They implement signing and webhook verification only. They are not generated API clients with typed models.
+
+## Troubleshooting
+
+### Signature mismatch
+
+Symptom: `Signature mismatch, compare line by line against the returned string_to_sign`
+
+Fix: compare `data.string_to_sign` from the response with the string you built, line by line; the differing line is the broken part. The four usual causes:
+
+1. `+` and `:` in query parameters not encoded first (`updated_since=2026-10-20T00%3A00%3A00%2B08%3A00`).
+2. Spaces encoded as `+` instead of `%20`.
+3. Signing an object that the HTTP library then re-serialises — sign **the exact bytes sent**.
+4. A proxy in front rewrites the path (Host is not signed, so changing Host is fine).
+
+### Timestamp out of range
+
+Symptom: `Timestamp is outside the allowed window (±300 seconds), please sync the server clock`
+
+Fix: the caller's clock is more than five minutes off. `data.server_time` in the response is the server's time in milliseconds; sync against it (turn on NTP). `X-Timestamp` is in **milliseconds**.
+
+### Possible replay
+
+Symptom: `Nonce has already been used, possible replay`
+
+Fix: every request needs a fresh `X-Nonce`, **retries included**. A request with a bad signature doesn't burn its nonce, so after fixing the signature you can resend as-is.
+
+### Source IP not allowed
+
+Symptom: `Source IP 10.0.0.5 is not in this application's whitelist`
+
+Fix: the IP in the message is what the server saw. If it's your nginx or gateway, `TRUSTED_PROXIES` isn't set and forwarded headers were ignored — add the proxy and restart the backend. If it really is the caller, add it to the application's allowlist.
+
+### Scope not granted
+
+Symptom: `This application is not authorized to call this API (user:read)`
+
+Fix: tick the scope in parentheses on the application. It applies immediately; no new keys needed.
+
+### Creating an app is refused
+
+Symptom: `OPEN_SECRET_KEY is not configured, the Secret Key cannot be stored safely`
+
+Fix: see quick start step 1. The SK is stored encrypted (the server must recover it to verify signatures), so without the key it refuses rather than store plain text.
 
 ## Tests
 
