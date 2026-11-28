@@ -46,7 +46,10 @@ from webauthn.helpers.structs import (
 
 from backend.app.admin.crud.crud_user import user_dao
 from backend.app.admin.model import User, UserPasskey
-from backend.app.admin.schema.passkey import PasskeyLoginOptions
+from backend.app.admin.schema.passkey import PasskeyLoginOptions, PasskeyReauthParam
+from backend.app.admin.service.mfa_service import mfa_service
+from backend.app.admin.utils import password_set_grant
+from backend.app.admin.utils.password_security import password_verify
 from backend.common.exception import errors
 from backend.common.i18n import t
 from backend.common.log import log
@@ -119,10 +122,27 @@ async def _own(db: AsyncSession, user_id: int, pk: int) -> UserPasskey:
     return row
 
 
-async def registration_options(db: AsyncSession, user: Any) -> dict[str, Any]:
-    """添加一把：生成注册挑战。原样交给 `PublicKeyCredential.parseCreationOptionsFromJSON()`"""
+async def _reauth(db: AsyncSession, user: User, session_uuid: str, obj: PasskeyReauthParam) -> None:
+    """
+    添加前本人再确认一次（#457 评审）：有密码的要当前密码；没有密码的（只用第三方登录建的号）要这个会话里
+    刚用第三方账号验证过（同「设置密码」那条，`password_set_grant`）；开了二次验证的再要动态码。
+    只在取挑战这一步查 —— 交注册结果那一步要用这里存下的挑战，绕不过去
+    """
+    if user.password:
+        if not (obj.password and password_verify(obj.password, user.password)):
+            raise errors.RequestError(msg=t('error.passkey.reauth_failed'))
+    elif not await password_set_grant.is_granted(user.id, session_uuid):
+        raise errors.RequestError(msg=t('error.passkey.reauth_required'))
+    await mfa_service.verify_if_enabled(db, user, obj.otp)
+
+
+async def registration_options(
+    db: AsyncSession, user: Any, session_uuid: str, reauth: PasskeyReauthParam
+) -> dict[str, Any]:
+    """添加一把：本人再确认一次，再生成注册挑战。原样交给 `PublicKeyCredential.parseCreationOptionsFromJSON()`"""
     _require_enabled()
     user = await _from_db(db, user)
+    await _reauth(db, user, session_uuid, reauth)
     rows = await list_mine(db, user.id)
     if len(rows) >= settings.PASSKEY_MAX_PER_USER:
         raise errors.RequestError(msg=t('error.passkey.too_many', max=settings.PASSKEY_MAX_PER_USER))

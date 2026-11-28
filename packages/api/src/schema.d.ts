@@ -1029,8 +1029,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 添加通行密钥：取注册挑战
-         * @description `options` 原样交给浏览器的 PublicKeyCredential.parseCreationOptionsFromJSON()
+         * 添加通行密钥：本人再确认一次，取注册挑战
+         * @description 有密码的要当前密码，开了二次验证的再要动态码；没有密码的账号要先用第三方账号验证身份。`options` 原样交给浏览器的 PublicKeyCredential.parseCreationOptionsFromJSON()
          */
         post: operations["passkey_registration_options_api_v1_sys_users_me_passkeys_options_post"];
         delete?: never;
@@ -11426,6 +11426,24 @@ export interface components {
             name: string;
         };
         /**
+         * PasskeyReauthParam
+         * @description 添加前本人再确认一次：有密码的输当前密码，开了二次验证的再输动态码（或恢复码）。
+         *     🔴 不确认的话，一个泄露的 access token（30 分钟）就能给账号添上攻击者自己的认证器 —— 通行密钥登录不走二次验证，
+         *     改密码也不动它，等于一个长期的后门（#457 评审）。字段名 `password` / `otp` 都在操作日志的打码清单里
+         */
+        PasskeyReauthParam: {
+            /**
+             * Password
+             * @description 当前密码（账号有密码时必填）
+             */
+            password?: string | null;
+            /**
+             * Otp
+             * @description 动态码或恢复码（开了二次验证时必填）
+             */
+            otp?: string | null;
+        };
+        /**
          * PasskeyRegisterParam
          * @description 添加：`navigator.credentials.create()` 的结果
          */
@@ -17947,7 +17965,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasskeyReauthParam"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -17956,6 +17978,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResponseSchemaModel_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

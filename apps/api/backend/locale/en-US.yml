@@ -151,6 +151,8 @@ error:
     disabled: Passkey sign-in is not enabled (an administrator must set PASSKEY_RP_ID and PASSKEY_ORIGINS)
     invalid: This passkey is not valid. Try another one or sign in with your password
     not_found: Passkey not found
+    reauth_failed: The current password is wrong, so the passkey was not added
+    reauth_required: This account has no password yet. Verify your identity with your third-party account under "Set password" in your profile first, then add the passkey
     register_failed: The passkey could not be added. Please try again (open the page on this site's address and complete fingerprint, face or PIN verification)
     too_many: You can add at most {max} passkeys. Remove one you no longer use first
   notice:

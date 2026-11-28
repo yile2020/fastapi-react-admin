@@ -22,6 +22,7 @@ from starlette.testclient import TestClient
 from webauthn.helpers import bytes_to_base64url
 
 from backend.app.admin.model import UserPasskey
+from backend.common.i18n import t
 from backend.core.conf import settings
 from backend.tests.utils.data_change import changes_of, engine
 
@@ -109,8 +110,12 @@ def _bearer(client: TestClient, username: str, password: str) -> dict[str, str]:
     return {'Authorization': f'{body["token_type"]} {body["access_token"]}'}
 
 
+#: 临时用户 `pytest_tmp_writes` 的密码；添加通行密钥前要再输一次（#457 评审）
+PASSWORD = 'Tmp@123456'
+
+
 def _register(client: TestClient, headers: dict[str, str], auth: SoftAuthenticator, name: str = '我的电脑', **kw: Any):
-    options = client.post('/sys/users/me/passkeys/options', headers=headers).json()
+    options = client.post('/sys/users/me/passkeys/options', headers=headers, json={'password': PASSWORD}).json()
     assert options['code'] == 200, options
     return client.post(
         '/sys/users/me/passkeys', headers=headers, json={'name': name, 'credential': auth.create(options['data'], **kw)}
@@ -136,7 +141,7 @@ def _passkey_on(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def me(client: TestClient, temp_user: str) -> Iterator[dict[str, Any]]:
     """临时用户 + 它的登录头；收尾硬删它名下的通行密钥（用户本身由 temp_user 硬删）"""
-    yield {'id': temp_user, 'headers': _bearer(client, 'pytest_tmp_writes', 'Tmp@123456')}
+    yield {'id': temp_user, 'headers': _bearer(client, 'pytest_tmp_writes', PASSWORD)}
     with engine().begin() as conn:
         conn.execute(sa.delete(UserPasskey.__table__).where(UserPasskey.__table__.c.user_id == int(temp_user)))
 
@@ -248,7 +253,7 @@ def test_the_same_authenticator_cannot_be_added_twice(client: TestClient, regist
 def test_per_user_limit(client: TestClient, registered, monkeypatch: pytest.MonkeyPatch) -> None:
     me, _, _ = registered
     monkeypatch.setattr(settings, 'PASSKEY_MAX_PER_USER', 1)
-    resp = client.post('/sys/users/me/passkeys/options', headers=me['headers']).json()
+    resp = client.post('/sys/users/me/passkeys/options', headers=me['headers'], json={'password': PASSWORD}).json()
     assert resp['code'] == 400 and '1' in resp['msg']
 
 
@@ -387,3 +392,49 @@ def test_registration_uses_the_uuid_in_the_database_not_the_cached_snapshot(clie
         assert _login(client, auth)[0].json()['code'] == 200
     finally:
         client.portal.call(redis_client.delete, key)
+
+
+# ── #457 评审：添加前本人再确认一次 · 登录断言的大小 ─────────────────────────────
+
+
+@pytest.mark.parametrize(
+    'body', [{}, {'password': None}, {'password': 'Wrong@123456'}], ids=['no-body', 'null', 'wrong']
+)
+def test_adding_a_passkey_needs_the_current_password(client: TestClient, me: dict[str, Any], body: dict) -> None:
+    """🔴 只凭 access token 就能添上攻击者自己的认证器的话，通行密钥登录不走二次验证、改密码也不动它 —— 一个长期后门"""
+    resp = client.post('/sys/users/me/passkeys/options', headers=me['headers'], json=body).json()
+    assert resp['code'] == 400, resp
+    assert resp['msg'] == t('error.passkey.reauth_failed')
+    # 没拿到挑战：本人确认之后再交的注册结果，也只会撞上「操作已过期」（挑战只在确认通过后才存）
+    listed = client.get('/sys/users/me/passkeys', headers=me['headers']).json()['data']
+    assert listed == []
+
+
+def test_adding_a_passkey_needs_the_code_when_two_factor_is_on(
+    client: TestClient, me: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """开了二次验证的再要动态码。用打桩的二次验证行：真绑一次 TOTP 在 test_mfa.py 里已经覆盖，这里只看接线"""
+    from backend.app.admin.service import mfa_service as mfa_module
+
+    async def fake_row(_db: object, _user_id: int) -> object:  # ruff:ignore[unused-async] 被 await 调用，要保持协程
+        return object()
+
+    monkeypatch.setattr(mfa_module, '_row', fake_row)
+    monkeypatch.setattr(mfa_module, '_check_code', lambda _row, otp: otp == '246810')
+    missing = client.post('/sys/users/me/passkeys/options', headers=me['headers'], json={'password': PASSWORD}).json()
+    assert missing['code'] == 400 and missing['msg'] == t('error.mfa.invalid_code')
+    wrong = client.post(
+        '/sys/users/me/passkeys/options', headers=me['headers'], json={'password': PASSWORD, 'otp': '000000'}
+    ).json()
+    assert wrong['code'] == 400
+    ok = client.post(
+        '/sys/users/me/passkeys/options', headers=me['headers'], json={'password': PASSWORD, 'otp': '246810'}
+    ).json()
+    assert ok['code'] == 200, ok
+
+
+def test_a_huge_login_assertion_is_refused_before_parsing(client: TestClient) -> None:
+    first = client.post('/auth/passkey/options').json()['data']
+    huge = {'id': 'x', 'rawId': 'x', 'type': 'public-key', 'response': {'clientDataJSON': 'A' * (40 * 1024)}}
+    resp = client.post('/auth/passkey/login', json={'challenge_id': first['challenge_id'], 'credential': huge})
+    assert resp.status_code == 422, resp.text

@@ -44,6 +44,17 @@ class PasskeyRegisterParam(PasskeyNameParam):
     _check = field_validator('credential')(_bounded)
 
 
+class PasskeyReauthParam(SchemaBase):
+    """
+    添加前本人再确认一次：有密码的输当前密码，开了二次验证的再输动态码（或恢复码）。
+    🔴 不确认的话，一个泄露的 access token（30 分钟）就能给账号添上攻击者自己的认证器 —— 通行密钥登录不走二次验证，
+    改密码也不动它，等于一个长期的后门（#457 评审）。字段名 `password` / `otp` 都在操作日志的打码清单里
+    """
+
+    password: str | None = Field(None, max_length=128, description='当前密码（账号有密码时必填）')
+    otp: str | None = Field(None, max_length=32, description='动态码或恢复码（开了二次验证时必填）')
+
+
 class PasskeyLoginOptions(SchemaBase):
     """登录第一步：挑战。`options` 原样交给 `PublicKeyCredential.parseRequestOptionsFromJSON()`"""
 
