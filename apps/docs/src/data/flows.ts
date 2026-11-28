@@ -144,4 +144,32 @@ export const flows = {
       caption: 'Built-in tasks running every 60 s or more often (heartbeat, deliveries, notice sync) deliberately write no run records — otherwise thousands a day',
     },
   },
+  /**
+   * common/dataio/importing.py + app/admin/service/import_service.py：template → preview（utils/excel_ops 解析，整份文件级的错直接拒）
+   * → commit（一次性令牌 IMPORT_EXPIRE_SECONDS，提交时按库的最新状态重校验，部门按层级写，all_or_nothing 时整批回滚）
+   */
+  dataImport: {
+    zh: {
+      steps: [
+        { name: '下载模板', sub: '带下拉选项和「说明」页' },
+        { name: '上传检查', sub: '只收 xlsx · 5 MB · 1000 行 · 表头', branch: { when: '不通过', name: '整个文件拒收', sub: '提示哪里不对' } },
+        { name: '逐行预览', sub: '一行都不写，算出新增 / 更新', branch: { when: '有问题的行', name: '标出原因', sub: '可以先排除再提交' } },
+        { name: '提交', sub: '30 分钟内，按库里最新状态再校验', branch: { when: '超时 · 重复提交', name: '令牌失效', sub: '重新上传预览' } },
+        { name: '写入', sub: '部门按层级先建上级', branch: { when: '有行失败', name: '跳过这几行', sub: '勾了「全部成功才导入」则整批回滚' } },
+      ],
+      end: { name: '导入完成', sub: '失败的行可下载错误报告' },
+      caption: '错误报告是原表加「行号」「原因」两列，改完直接重新导入',
+    },
+    en: {
+      steps: [
+        { name: 'Download template', sub: 'With dropdowns and a notes sheet' },
+        { name: 'Upload checks', sub: 'xlsx only · 5 MB · 1000 rows · headers', branch: { when: 'Fails', name: 'Whole file refused', sub: 'The message says why' } },
+        { name: 'Row-by-row preview', sub: 'Nothing written; counts creates / updates', branch: { when: 'Bad rows', name: 'Reason per row', sub: 'Exclude them before committing' } },
+        { name: 'Commit', sub: 'Within 30 min, rechecked against the database', branch: { when: 'Expired · reused', name: 'Token invalid', sub: 'Upload and preview again' } },
+        { name: 'Write', sub: 'Departments parent-first', branch: { when: 'Some rows fail', name: 'Those rows skipped', sub: 'Or the whole batch rolls back if all-or-nothing is on' } },
+      ],
+      end: { name: 'Done', sub: 'Failed rows: download the error report' },
+      caption: 'The error report is your file plus "row" and "reason" columns — fix it and import it again',
+    },
+  },
 }
