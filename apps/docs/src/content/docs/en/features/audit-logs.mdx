@@ -7,10 +7,19 @@ sidebar:
 
 import shot from '../../../../../../../docs/screenshots/log-change.png'
 import ProductShot from '../../../../components/ProductShot.astro'
+import DiagramFlow from '../../../../components/DiagramFlow.astro'
+import { flows } from '../../../../data/flows'
 
-The system keeps three kinds of records, each answering one question. The **sign-in log** answers "who signed in, when, from where, and did it work", and also holds security events such as an account being locked or signed out by force. The **operation log** answers "who called which endpoint with what, what came back, and how long it took", with passwords, tokens and similar fields masked before they are stored. **Data change history** answers "who changed which field of this record from what to what", and links both ways with the operation log entry that caused it. Data changes carry a signed chain, so a record that is edited, deleted or inserted afterwards shows up when the chain is checked. All three are kept for 180 days by default.
+When something goes wrong you need "who did what, and when". The system keeps three records: the **sign-in log** (who signed in from where, whether it worked, lockouts and forced sign-outs), the **operation log** (who called which API with what parameters and what came back) and the **data change history** (which field someone changed from what to what). Passwords and tokens are redacted before anything is stored, and the data change history carries a signed chain, so edits and deletions can be detected. All three are kept for 180 days by default, meeting the six-month minimum of China's Cybersecurity Law.
+
+This page first renames a department to show how the three records link up, then the order a change leaves its records in, then what each one holds, tamper detection and common problems.
+
+<details>
+<summary>Show the data change history</summary>
 
 <ProductShot src={shot} alt="Data change history" url="localhost:8888/log/change" />
+
+</details>
 
 ## UI entry points
 
@@ -24,6 +33,27 @@ The system keeps three kinds of records, each answering one question. The **sign
 - The sign-in and operation log pages have **no per-row delete**, only **Clear**, which deletes the whole table regardless of the current filters. Data change history **cannot be deleted or cleared**; it is only pruned by its retention period.
 - ⚠️ The frontend route guards of the sign-in and operation log pages currently check `log:login:del` / `log:opera:del` rather than `list`, so a role granted only viewing cannot open them. The Data changes page checks `log:change:list`.
 - Data change history is **not limited by data scope**: anyone with `log:change:list` sees changes to every object.
+
+## Quick start
+
+Rename a department and follow the trail, about three minutes:
+
+1. Open **System → Departments**, change a department's name and save.
+2. Click **Change history** on that row: the drawer shows "name: old → new", with who, when, and that it came from the web.
+3. Open **Logs → Data changes**, expand the top record and click **View the operation log of this request** next to the trace ID: you land on the **operation log** entry with its parameters, response and duration.
+4. Open **Logs → Sign-in log**: your own sign-in is at the top, with IP, location and browser.
+5. As a superuser, click **Check integrity** on the data changes page: the result is *No problems found*.
+6. Rename the department back.
+
+## Recording order
+
+A change request leaves its records in this order:
+
+<DiagramFlow {...flows.audit.en} />
+
+- **Change records share the business transaction**: if it rolls back, no change record is left, so there's never "the record says it changed but the data didn't".
+- **The operation log is written asynchronously after the response**: requests aren't slowed down; the price is that entries are dropped once the queue (100,000) is full, which normal load never reaches.
+- **Sensitive fields only record that they changed**: passwords, recovery codes and secret-looking config values show as *Changed (value not recorded)*.
 
 ## Sign-in log
 
@@ -101,6 +131,47 @@ The signing key is `DATA_CHANGE_CHAIN_KEY` in `.env`, **kept in the environment 
 | Notification deliveries, webhook records | 30 days | Each one's retention setting in Config |
 
 The cleanup task `maintenance.prune_logs` runs daily at 03:15 and deletes by business time (sign-in time, operation time) in batches of 2,000. The 180 days come from Article 21 of China's Cybersecurity Law, which requires network logs to be kept for at least six months; the migration that raised it from 30 to 180 days **only changes the task if it was still at 30**, leaving your own value alone. When data changes are pruned, the chain's starting point is moved first, so verification still passes afterwards.
+
+## Troubleshooting
+
+### Every IP is the same
+
+Cause: the system runs behind nginx or a load balancer and `TRUSTED_PROXIES` isn't set, so forwarded headers are ignored and every request appears to come from the proxy.
+
+Fix: add the proxy addresses (IPs or ranges) to `TRUSTED_PROXIES` in `.env` and restart the backend. Only new records get the real IP; old ones can't be fixed.
+
+### Location is empty
+
+Private addresses and pure IPv6 addresses aren't in the offline database; with `IP_LOCATION_PARSE` set to `false` nothing is looked up.
+
+### Log pages won't open
+
+Cause: the frontend guards of these two pages currently check `log:login:del` / `log:opera:del`, so "query" alone isn't enough (see [above](#ui-entry-points)).
+
+Fix: tick the pages' buttons on the role as well.
+
+### A change has no history
+
+Check in order:
+
+1. Is the object in the [audited list](#data-change-history)? Today that's users, departments, roles, menus and config. Other tables need to be [registered](#adding-your-own-tables).
+2. Did the change bypass the app? Direct database edits, migrations and seed data leave no change records.
+3. Find the request in the operation log by time and check it succeeded — a failed request rolled back, so there's nothing to record.
+
+### Integrity check reports problems
+
+| Message | Meaning |
+|---|---|
+| `Record #N was edited` | Someone changed this row outside the app |
+| `Records #A – #B were deleted` | Rows in the middle were removed |
+| `Not on the chain: written straight into the table, bypassing the app` | A row was inserted directly |
+| `N records were signed before the key was changed and can’t be checked with the current key` | `DATA_CHANGE_CHAIN_KEY` was changed; not necessarily tampering, but those rows can no longer be proven untouched |
+
+With `DATA_CHANGE_CHAIN_KEY` empty the check still runs, but it only guards against accidental direct edits: anyone who knows the algorithm can re-sign the whole chain. Set it in production, and don't change it once set.
+
+### Changing retention
+
+Sign-in and operation logs: under **Scheduler → Tasks**, edit the parameter `{"days": 180}` of the log cleanup job. Data change history: **System → Config → Logs**. Less than 180 days falls short of the Cybersecurity Law's six months.
 
 ## Settings
 

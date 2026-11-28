@@ -229,4 +229,32 @@ export const flows = {
       caption: 'Superusers skip the last three steps. The first three run whenever a request resolves who is signed in, so disabling a department or role refuses its users on their very next request',
     },
   },
+  /**
+   * common/data_change/capture.py（会话 before_flush / 提交前比对，和业务同一事务写入）→ chain.py（编号 + HMAC 连上一条）
+   * → middleware/opera_log_middleware.py（响应之后打码、入队，put_nowait 满了丢弃）；两边靠 trace_id 关联
+   */
+  audit: {
+    zh: {
+      steps: [
+        { name: '请求进来', sub: '分配一个 trace_id' },
+        { name: '业务改数据', sub: '会话记下改了哪些对象', branch: { when: '事务回滚', name: '不留变更记录', sub: '和业务数据同进同退' } },
+        { name: '提交前比对', sub: '字段 · 旧值 · 新值，敏感字段只记「改了」' },
+        { name: '签名入链', sub: '编号，签名里带上一条的签名' },
+        { name: '写操作日志', sub: '响应之后打码、排队写入', branch: { when: '队列满', name: '丢弃这一条', sub: '打警告日志' } },
+      ],
+      end: { name: '两条记录互跳', sub: '同一个 trace_id' },
+      caption: '登录日志是另一条路：每次登录尝试和锁定、强制下线这类安全事件，在登录接口里直接写',
+    },
+    en: {
+      steps: [
+        { name: 'Request in', sub: 'Gets a trace_id' },
+        { name: 'Data changes', sub: 'The session notes changed objects', branch: { when: 'Rolled back', name: 'No change record', sub: 'Lives and dies with the data' } },
+        { name: 'Diff before commit', sub: 'Field · old · new; sensitive fields only "changed"' },
+        { name: 'Signed into the chain', sub: "Numbered; signature includes the previous one's" },
+        { name: 'Operation log', sub: 'After the response: redacted, queued', branch: { when: 'Queue full', name: 'This entry dropped', sub: 'A warning is logged' } },
+      ],
+      end: { name: 'Linked both ways', sub: 'Same trace_id' },
+      caption: 'Login logs take a separate path: every sign-in attempt and security events like lockouts and forced sign-outs are written by the sign-in API itself',
+    },
+  },
 }
