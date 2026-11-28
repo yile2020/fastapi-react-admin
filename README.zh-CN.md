@@ -4,7 +4,7 @@
 
 # fastapi-react-admin
 
-[English](./README.md) | **简体中文**
+[English](./README.md) | **简体中文** | [Türkçe](./README.tr.md)
 
 **开箱即用的中后台底座 · FastAPI + React 19 + shadcn/ui**
 
