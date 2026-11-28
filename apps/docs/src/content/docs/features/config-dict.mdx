@@ -25,10 +25,10 @@ import { flows } from '../../../data/flows'
 
 | 入口 | 路径 | 打开页面要 | 其余权限码 |
 |---|---|---|---|
-| **系统管理 → 参数配置** | `/plugins/config` | `sys:config:edit` | 查看 `sys:config:list` · 新增键 `sys:config:add` · 删除 `sys:config:del`；每行的「变更记录」要 `log:change:list` |
-| **系统管理 → 数据字典** | `/plugins/dict` | `dict:type:add` | 类型 `dict:type:list` · `edit` · `del`；字典项 `dict:data:list` · `add` · `edit` · `del` · `import` · `export` |
+| **系统管理 → 参数配置** | `/plugins/config` | `sys:config:list` | 查看 `sys:config:list` · 新增键 `sys:config:add` · 删除 `sys:config:del`；每行的「变更记录」要 `log:change:list` |
+| **系统管理 → 数据字典** | `/plugins/dict` | `dict:type:list` | 类型 `dict:type:list` · `edit` · `del`；字典项 `dict:data:list` · `add` · `edit` · `del` · `import` · `export` |
 
-⚠️ 和其他几个管理页一样，这两页的前端路由守卫认的是编辑 / 新增码，不是查询码：只授了查询的角色打不开。
+打开页面靠「查询」码；能不能改由其余的码决定。
 
 ## 上手步骤
 

@@ -28,7 +28,7 @@ import { flows } from '../../../data/flows'
 | **定时任务 → 任务调度** | `/scheduler/manage` | 查看 `task:scheduler:list` · 新建 `add` · 修改与启停 `edit` · 立即执行 `run` · 删除 `del` | 任务列表、新建 / 编辑、cron 预览 |
 | **定时任务 → 执行记录** | `/scheduler/record` | 查看 `task:result:list` | 每次执行的状态、重试次数、执行节点；点时间看返回值和异常栈 |
 
-⚠️ 「任务调度」页的前端路由守卫认的是 `task:scheduler:edit`，不是 `list` —— 只授了查看的角色打不开这一页。「执行记录」页没有路由守卫，但它的列表接口要 `task:result:list`，没有这个码的人进得去、列表加载失败。
+两页的前端路由守卫分别认 `task:scheduler:list` 和 `task:result:list`：只要有查看权限就能打开，没有就跳到「无权访问」。
 
 ## 上手步骤
 

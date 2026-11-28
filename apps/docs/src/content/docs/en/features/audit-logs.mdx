@@ -31,7 +31,7 @@ This page first renames a department to show how the three records link up, then
 | **Change history** row action on the Users, Departments, Roles, Menus and Config pages | — | `log:change:list` | The change history of that one object |
 
 - The sign-in and operation log pages have **no per-row delete**, only **Clear**, which deletes the whole table regardless of the current filters. Data change history **cannot be deleted or cleared**; it is only pruned by its retention period.
-- ⚠️ The frontend route guards of the sign-in and operation log pages currently check `log:login:del` / `log:opera:del` rather than `list`, so a role granted only viewing cannot open them. The Data changes page checks `log:change:list`.
+- The three pages' frontend route guards check `log:login:list`, `log:opera:list` and `log:change:list`: viewing permission opens them.
 - Data change history is **not limited by data scope**: anyone with `log:change:list` sees changes to every object.
 
 ## Quick start
@@ -146,9 +146,9 @@ Private addresses and pure IPv6 addresses aren't in the offline database; with `
 
 ### Log pages won't open
 
-Cause: the frontend guards of these two pages currently check `log:login:del` / `log:opera:del`, so "query" alone isn't enough (see [above](#ui-entry-points)).
+Cause: the role ticks the menu but not its "query" button. Page guards check `log:login:list` / `log:opera:list` (see [above](#ui-entry-points)).
 
-Fix: tick the pages' buttons on the role as well.
+Fix: tick "query" under those menus in the role's Permissions.
 
 ### A change has no history
 

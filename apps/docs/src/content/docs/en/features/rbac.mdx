@@ -25,19 +25,19 @@ This page first builds a working account from scratch, then shows how a request 
 
 | Screen | Path | Needed to open the page | Other permission codes |
 |---|---|---|---|
-| **System → Users** | `/system/user` | `sys:user:del` | View `sys:user:list` · export `sys:user:export`. Create, edit, change permissions, reset password, reset two-factor and import are **superuser only** |
-| **System → Roles** | `/system/role` | `sys:role:add` | View `sys:role:list` · edit and add / remove members `sys:role:edit` · change permissions `sys:role:menu:edit` · change data scopes `sys:role:scope:edit` · delete `sys:role:del` |
-| **System → Departments** | `/system/dept` | `sys:dept:add` | View `sys:dept:list` · edit `edit` · delete `del` · import `sys:dept:import` · export `sys:dept:export` |
-| **System → Menus** | `/system/menu` | `sys:menu:add` | View `sys:menu:list` · edit `edit` · delete `del` |
+| **System → Users** | `/system/user` | `sys:user:list` | View `sys:user:list` · export `sys:user:export`. Create, edit, change permissions, reset password, reset two-factor and import are **superuser only** |
+| **System → Roles** | `/system/role` | `sys:role:list` | View `sys:role:list` · edit and add / remove members `sys:role:edit` · change permissions `sys:role:menu:edit` · change data scopes `sys:role:scope:edit` · delete `sys:role:del` |
+| **System → Departments** | `/system/dept` | `sys:dept:list` | View `sys:dept:list` · edit `edit` · delete `del` · import `sys:dept:import` · export `sys:dept:export` |
+| **System → Menus** | `/system/menu` | `sys:menu:list` | View `sys:menu:list` · edit `edit` · delete `del` |
 
-⚠️ The "needed to open the page" column is what the frontend route guards check today: all four check a **create or delete** code, not the view code. A role with only the view code is redirected to 403. The seed MANAGER role has the Users and Departments menus and both view codes, but neither `sys:user:del` nor `sys:dept:add`. The E2E suite ran into this ([`e2e/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/web/e2e/AGENTS.md): a test role without the Departments buttons lands on `/403` when opening the department page). Superusers are not subject to route guards.
+The "needed to open the page" column is the code the frontend route guard checks — each page's **query** code. A role with the menu ticked but not its query button is redirected to 403. Superusers skip route guards.
 
 ## Quick start
 
 Give a new colleague an account that manages departments, about five minutes:
 
-1. **System → Roles**: create a role "Department admin" with code `DEPT_ADMIN` (the code can't be changed later).
-2. Select it, open **Permissions**, tick **System → Departments** and all its buttons, and save. Ticking only "query" doesn't open the page — see [the note above](#ui-entry-points).
+1. **System → Roles**: create a role "Department admin" with code `DEPT_ADMIN` (the code can't be changed later), and **turn off Enable data-scope filtering** — it's on by default, and a role with filtering on but no data scope sees no rows at all (see [Data permissions](/en/features/data-permissions/#no-rows-at-all)).
+2. Select it, open **Permissions**, tick **System → Departments** and its query, create and edit buttons, and save. Query opens the page; the other buttons decide what can be done.
 3. **System → Users**: create the user (superusers only) — pick the department, the "Department admin" role and an initial password that passes the password rules.
 4. On that user's row open **Permissions & security** and turn **Admin sign-in** on. **New users have it off**; without it they can sign in and look, but every save is refused.
 5. Sign in as the new account: the sidebar shows only Departments, and departments can be created and edited.
@@ -163,9 +163,9 @@ Fix: tick menus on the role in Roles, or enable the role, or assign another.
 
 Symptom: clicking the menu lands on *Access denied*.
 
-Cause: the frontend guards of the four system screens currently check the create or delete code (see [above](#ui-entry-points)), so "query" alone isn't enough.
+Cause: the menu is ticked but its "query" button isn't. Page guards check the page's query code (see [above](#ui-entry-points)); the menu itself carries no code.
 
-Fix: tick the menu's buttons too, or at least the code in the "To open the page" column.
+Fix: tick "query" under that menu in the role's Permissions.
 
 ### Menu gone from the sidebar
 
@@ -187,7 +187,6 @@ Fix: move its people elsewhere and delete or move its sub-departments first.
 
 ## Known issues
 
-- The four screens' frontend route guards check create / delete codes rather than the view code; see [above](#ui-entry-points).
 - Users created by hand or by import start without Admin sign-in and cannot save anything after their first sign-in; the switch's UI description does not match its behaviour, see [above](#superuser-and-admin-sign-in).
 - The user delete dialog says it cannot be undone; deletion is actually logical, there is just no restore.
 - Data scopes have no "my department and all below" template; see [Data permissions](/en/features/data-permissions/#limitations).

@@ -28,7 +28,7 @@ import { flows } from '../../../data/flows'
 | **系统管理 → 数据权限** | `/system/data-permission` | 范围：`data:scope:list` · `add` · `edit` · `del`，改范围里挂哪些规则 `data:scope:rule:edit`；规则：`data:rule:list` · `add` · `edit` · `del` | 左栏是数据范围，右栏是这个范围里的规则 |
 | **系统管理 → 角色管理 →「数据范围」** | `/system/role` | 查看 `sys:role:list`，修改 `sys:role:scope:edit` | 给角色绑定数据范围；角色表单里还有一个「启用数据权限过滤」开关，关掉 = 这个角色不受数据范围限制（如集团总部角色） |
 
-⚠️ 打开「数据权限」这一页，前端路由守卫目前认的是 `data:scope:add`，不是 `data:scope:list` —— 只授了「查询」的角色打不开这一页。
+打开「数据权限」这一页要 `data:scope:list`。
 
 ## 上手步骤
 
@@ -179,8 +179,6 @@ with scoped_to_user(user):
 现象：页面跳到「无权访问」，或接口返回 403。
 
 原因：缺功能权限，和数据范围无关。到 **角色管理 → 功能权限** 给角色勾上这一页和它的「查询」按钮。
-
-⚠️ **系统管理 → 数据权限** 这一页目前认的是「新增」（`data:scope:add`），只勾「查询」打不开，这是已知问题。
 
 接口直接返回下面这几句的，是账号本身的问题：
 

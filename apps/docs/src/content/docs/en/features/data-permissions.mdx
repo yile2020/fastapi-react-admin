@@ -28,7 +28,7 @@ This page first walks through "own department only" with the seed data, then cov
 | **System → Data permissions** | `/system/data-permission` | Scopes: `data:scope:list` · `add` · `edit` · `del`, changing which rules a scope holds `data:scope:rule:edit`; rules: `data:rule:list` · `add` · `edit` · `del` | Data scopes on the left, the rules of the selected scope on the right |
 | **System → Roles → Data scopes** | `/system/role` | View `sys:role:list`, change `sys:role:scope:edit` | Bind data scopes to a role; the role form also has an **Enable data-scope filtering** switch, and off means the role is not limited by data scopes (for a head-office role, say) |
 
-⚠️ Opening the Data permissions page currently requires `data:scope:add` in the frontend route guard, not `data:scope:list`, so a role granted only "query" cannot open it.
+Opening the Data permissions page requires `data:scope:list`.
 
 ## Quick start
 
@@ -179,8 +179,6 @@ Usual causes:
 Symptom: the page redirects to *Access denied*, or the API returns 403.
 
 Cause: a missing function permission, unrelated to data scopes. Tick the page and its "query" button under **System → Roles → Permissions**.
-
-⚠️ **System → Data permissions** currently checks *add* (`data:scope:add`), so ticking only "query" doesn't open it. This is a known issue.
 
 If the API answers with one of these, the account itself is the problem:
 

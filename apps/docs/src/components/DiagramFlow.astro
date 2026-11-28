@@ -32,7 +32,7 @@ const cols = steps.length + 1
 <figure class="dflow not-content" style={`--cols: ${cols}`}>
   <ol>
     {steps.map((step) => (
-      <li class="dflow-col">
+      <li class:list={['dflow-col', { 'dflow-col--branch': !!step.branch }]}>
         <div class="dflow-node">
           <strong>{step.name}</strong>
           {step.sub && <small>{step.sub}</small>}
@@ -78,8 +78,8 @@ const cols = steps.length + 1
     content: '↓'; position: absolute; left: 50%; bottom: -1.4rem; transform: translateX(-50%);
     font-size: var(--fs-sm); line-height: 1; color: var(--sl-color-gray-3);
   }
-  .dflow-col:not(:last-child):has(.dflow-branch) > .dflow-node::after { content: none }
-  .dflow-col:not(:last-child):has(.dflow-branch)::after {
+  .dflow-col--branch:not(:last-child) > .dflow-node::after { content: none }
+  .dflow-col--branch:not(:last-child)::after {
     content: '↓'; position: absolute; left: 50%; bottom: -1.4rem; transform: translateX(-50%);
     font-size: var(--fs-sm); line-height: 1; color: var(--sl-color-gray-3);
   }
@@ -103,10 +103,10 @@ const cols = steps.length + 1
     .dflow-col { display: grid; grid-row: span 2; grid-template-rows: subgrid }
     .dflow-node { justify-content: center }
     .dflow-col:not(:last-child) > .dflow-node::after,
-    .dflow-col:not(:last-child):has(.dflow-branch) > .dflow-node::after {
+    .dflow-col--branch:not(:last-child) > .dflow-node::after {
       content: '→'; left: auto; bottom: auto; right: -0.95rem; top: 50%; transform: translateY(-50%);
     }
-    .dflow-col:not(:last-child):has(.dflow-branch)::after { content: none }
+    .dflow-col--branch:not(:last-child)::after { content: none }
     .dflow-branch { margin: 0; align-self: start }
     .dflow-when::before, .dflow-when::after { height: 0.9rem }
   }

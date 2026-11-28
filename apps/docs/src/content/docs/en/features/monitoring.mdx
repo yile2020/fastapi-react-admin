@@ -38,7 +38,7 @@ Monitoring pages and endpoints are guarded by **superuser**, with no permission 
 With everything running locally under `pnpm dev`, about five minutes:
 
 1. Open `http://127.0.0.1:8088/api/health/status`: 200, with `api`, `database`, `redis`, `scheduler` and `worker` all `ok` under `services`, plus the version and commit at the end.
-2. Stop the worker process in the `pnpm dev` terminal (or `docker stop` the worker container in production), wait three minutes and refresh: `worker` turns `stale` and the whole response becomes 503.
+2. Stop the worker, wait three minutes and refresh: `worker` turns `stale` and the whole response becomes 503. In production `docker stop` the worker container; locally on macOS / Windows the worker and beat are separate processes, so stop the worker one. ⚠️ On Linux `pnpm dev` embeds beat in the worker (`-B`), so stopping it stops beat too — you'll see `scheduler` go `stale` and `worker` go `unknown`.
 3. Start the worker again; it's back to 200 within a minute.
 4. As a superuser open **Monitoring → Redis**, set refresh to 5 seconds and watch the ops/s trend grow.
 

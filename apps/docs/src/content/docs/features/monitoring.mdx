@@ -38,7 +38,7 @@ import { flows } from '../../../data/flows'
 本地用 `pnpm dev` 起着全部服务时，大约 5 分钟：
 
 1. 浏览器打开 `http://127.0.0.1:8088/api/health/status`：返回 200，`services` 里 `api`、`database`、`redis`、`scheduler`、`worker` 五项都是 `ok`，最后带着版本号和提交号。
-2. 在 `pnpm dev` 的终端里停掉 worker 那个进程（或 `docker stop` 生产环境的 worker 容器），等 3 分钟再刷新：`worker` 变成 `stale`，整个响应变成 503。
+2. 停掉 worker，等 3 分钟再刷新：`worker` 变成 `stale`，整个响应变成 503。生产环境 `docker stop` worker 容器即可；本地 macOS / Windows 上 worker 和 beat 是两个进程，停 worker 那个。⚠️ Linux 上 `pnpm dev` 把 beat 嵌在 worker 里（`-B`），停掉它 beat 也一起停了，看到的是 `scheduler` 变成 `stale`、`worker` 变成 `unknown`。
 3. 把 worker 起回来，一分钟内恢复 200。
 4. 用超级管理员打开 **系统监控 → Redis 监控**，把刷新改成 5 秒，看每秒操作数的趋势线一点点长出来。
 

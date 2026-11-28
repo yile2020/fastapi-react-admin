@@ -25,10 +25,10 @@ This page first walks through both — changing a password rule and creating a d
 
 | Screen | Path | Needed to open the page | Other permission codes |
 |---|---|---|---|
-| **System → Config** | `/plugins/config` | `sys:config:edit` | View `sys:config:list` · **Add key** `sys:config:add` · delete `sys:config:del`; each row's **Change history** needs `log:change:list` |
-| **System → Data dictionary** | `/plugins/dict` | `dict:type:add` | Types `dict:type:list` · `edit` · `del`; items `dict:data:list` · `add` · `edit` · `del` · `import` · `export` |
+| **System → Config** | `/plugins/config` | `sys:config:list` | View `sys:config:list` · **Add key** `sys:config:add` · delete `sys:config:del`; each row's **Change history** needs `log:change:list` |
+| **System → Data dictionary** | `/plugins/dict` | `dict:type:list` | Types `dict:type:list` · `edit` · `del`; items `dict:data:list` · `add` · `edit` · `del` · `import` · `export` |
 
-⚠️ As with several other admin screens, these two pages' frontend route guards check the edit / create code rather than the view code, so a role granted only viewing cannot open them.
+The query code opens the page; the other codes decide what can be changed.
 
 ## Quick start
 

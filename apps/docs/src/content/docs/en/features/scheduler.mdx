@@ -28,7 +28,7 @@ This page first schedules a job and confirms it ran, then follows a job from sav
 | **Scheduler → Tasks** | `/scheduler/manage` | View `task:scheduler:list` · create `add` · edit and enable / disable `edit` · run now `run` · delete `del` | Job list, create / edit, cron preview |
 | **Scheduler → Task history** | `/scheduler/record` | View `task:result:list` | Status, retries and worker of each run; click the time for the return value and traceback |
 
-⚠️ The Tasks page's frontend route guard checks `task:scheduler:edit`, not `list`, so a role granted only viewing cannot open it. The Task history page has no route guard, but its list endpoint needs `task:result:list`; without it the page opens and the list fails to load.
+The two pages' frontend route guards check `task:scheduler:list` and `task:result:list`: viewing permission opens them, and without it you land on *Access denied*.
 
 ## Quick start
 

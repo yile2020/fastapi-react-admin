@@ -196,7 +196,7 @@ Starlight 0.39 起不再支持 `autogenerate` 和 `label` 写在同一层。
 - ⚠️ `DiagramMonorepo` 的共享包高亮是各客户端 `package.json` 里**真实**的直接 workspace 依赖，改了依赖要同步组件里的映射
 - 多端展示的 Web 画面直接用 `docs/screenshots/dashboard.png`；桌面复用该画面。手机是按
   `apps/mobile/src/components/brand-top.tsx`、`grouped.tsx` 和原生首页还原的示意，注明非设备实拍；
-  调整这块时对照现有客户端界面与 `features/clients.md`，不要为三端杜撰同一套仪表盘
+  调整这块时对照现有客户端界面与 `features/clients.mdx`，不要为三端杜撰同一套仪表盘
 - ⚠️ hero 的同心圆和收尾水印会伸出内容列：横向溢出裁在 `.main-frame` 上（`overflow-x: clip`）。
   裁 `html` / `body` 没用 —— 那会传给视口变成 `hidden`，实测 `scrollTo` 照样横移 230px（触屏能不能拖没测）
 - ⚠️ 只给首页加样式时选择器挂在 `:root[data-has-hero]` 上（Starlight 只给带 hero 的页加这个属性），
