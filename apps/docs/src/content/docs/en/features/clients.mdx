@@ -5,7 +5,26 @@ sidebar:
   order: 9
 ---
 
+import DiagramFlow from '../../../../components/DiagramFlow.astro'
+import { flows } from '../../../../data/flows'
+
 The repo ships two clients alongside the browser. `apps/desktop` runs the same web build inside Electron and adds what a browser can't do: silent printing, local hardware through native helper processes, a refresh token held by the main process, and auto-update. Each GitHub Release carries installers for Windows, macOS and Linux. `apps/mobile` is a native Expo / React Native app with its own screens, not a WebView around the web pages. It shares the API client and translations with the web app.
+
+This page first installs the desktop app and the phone app and points them at your own backend, then shows how the desktop app updates itself, then each client's capabilities, limits and common problems.
+
+## Quick start
+
+**Desktop**, about three minutes:
+
+1. Download your platform's installer from [GitHub Releases](https://github.com/yile2020/fastapi-react-admin/releases) (see the table below) and install it. It's unsigned, so the OS blocks it once — see [Troubleshooting](#windows-blocks-the-installer).
+2. On first launch, enter the backend address on the sign-in page (such as `https://admin.example.com`), then sign in as usual.
+3. To switch environments later, click *Change server* on the sign-in page.
+
+**Phone app** (Android only), about three minutes:
+
+1. Download `admin-mobile-<version>.apk` from the same release and open it on the phone to install.
+2. Set the server address on the sign-in screen and tap *Test and save*: it probes the address and only saves if it can connect.
+3. Sign in with a password or an SMS code.
 
 ## Desktop downloads
 
@@ -55,6 +74,10 @@ It uses `electron-updater`. The feed is `updateUrl` from `config.json` if set (a
 
 For an intranet mirror, publish `<version>.exe`, its `.blockmap` and `latest.yml`, uploading `latest.yml` **last** and serving it without caching. The `.blockmap` enables differential downloads, but the first update usually falls back to a full download.
 
+## Update flow
+
+<DiagramFlow {...flows.desktopUpdate.en} />
+
 ## Building installers
 
 Pushing a `v*` tag runs [`.github/workflows/release.yml`](https://github.com/yile2020/fastapi-react-admin/blob/main/.github/workflows/release.yml). A `prepare` job checks that the tag matches both `apps/web/package.json` and the backend's `__version__`, then creates **one** draft release. A matrix then builds on `windows-latest`, `macos-latest` and `ubuntu-latest`, each platform on its own OS. electron-builder runs with `--publish never` and `gh release upload` attaches the files, because electron-builder's own publisher once raced into two drafts. A person tests the draft before publishing it.
@@ -91,6 +114,39 @@ Not supported yet: downloading and installing from inside the app, and over-the-
 - Changing the email address needs an email verification code, which only the web has; in the app the email is read-only. A phone number can be bound in the app's profile with an SMS code.
 
 To run it: `pnpm --filter api dev:host` (backend on `0.0.0.0:8088`), then `pnpm mobile:dev`, and open the printed `exp://…:8800` address in Expo Go for SDK 57.
+
+## Troubleshooting
+
+### Windows blocks the installer
+
+The installer isn't code-signed, so SmartScreen blocks it once: click *More info → Run anyway*.
+
+### macOS says it's damaged
+
+Also because it's unsigned. Right-click the app → *Open*, or run `xattr -dr com.apple.quarantine "/Applications/Admin Desktop.app"`. The macOS build doesn't auto-update either; download new versions by hand.
+
+### Desktop never updates
+
+Check in order: is it macOS (no auto-update)? Is `autoUpdate` turned off in `config.json`? In the intranet directory `updateUrl` points to, is `latest.yml` cached, or wasn't it uploaded last? Manual checks ignore `autoUpdate`.
+
+### Desktop build shows old UI
+
+When packaging by hand you skipped `pnpm --filter web build`: the desktop build doesn't rebuild the frontend, so it packages the previous UI without any error.
+
+### App can't reach the server
+
+Messages after *Test and save*:
+
+| Message | Check first |
+|---|---|
+| `No response within 10 seconds` | Phone and backend on the same network; for local development start the backend with `pnpm --filter api dev:host` to bind `0.0.0.0` |
+| `Server returned HTTP 502` and similar | Right address, but the backend isn't running or the proxy is misconfigured |
+| `That address doesn't look like this project's backend` | You entered the web frontend or another service |
+| `Can't reach that address` | Production needs a **domain + HTTPS**: certificates are issued to domains, so an IP fails TLS |
+
+### Email locked in the app
+
+Changing email needs an email verification code, which only the web app offers so far. Phone numbers can be bound in the app's profile with an SMS code.
 
 ## Settings
 

@@ -500,4 +500,30 @@ export const flows = {
       caption: "To upgrade a running database don't use db:init (it drops the database) — run pnpm db:upgrade",
     },
   },
+  /**
+   * apps/desktop/src/main/updater.ts（electron-updater；config.json 的 updateUrl 优先，空则 app-update.yml 的 GitHub Releases；
+   * 打包后 Windows / Linux 启动 30 秒后一次、之后每 4 小时，macOS 未签名不检查；退出时 quitAndInstall(true, true)）
+   */
+  desktopUpdate: {
+    zh: {
+      steps: [
+        { name: '检查更新', sub: '启动 30 秒后一次，之后每 4 小时', branch: { when: 'macOS', name: '不自动更新', sub: '安装包没有签名' } },
+        { name: '读更新源', sub: 'config.json 的 updateUrl，空则 GitHub', branch: { when: 'latest.yml 被缓存', name: '看不到新版本', sub: '内网服务器别缓存它' } },
+        { name: '后台下载', sub: '有 blockmap 时差量下载' },
+        { name: '退出时安装', sub: '静默安装并自动重启' },
+      ],
+      end: { name: '新版本', sub: 'config.json 不受影响' },
+      caption: 'Windows 按用户安装，更新时不弹管理员提权；手机 App 是另一条路：启动时查 latest-android.json，提示去浏览器下载 APK',
+    },
+    en: {
+      steps: [
+        { name: 'Check', sub: '30 s after launch, then every 4 h', branch: { when: 'macOS', name: 'No auto-update', sub: 'The package is unsigned' } },
+        { name: 'Update source', sub: 'updateUrl in config.json, else GitHub', branch: { when: 'latest.yml cached', name: 'New version unseen', sub: "Don't cache it on intranet servers" } },
+        { name: 'Download', sub: 'Differential when a blockmap exists' },
+        { name: 'Install on quit', sub: 'Silent install, then relaunch' },
+      ],
+      end: { name: 'New version', sub: 'config.json is untouched' },
+      caption: 'Windows installs per user, so updates never ask for admin rights; the mobile app works differently — it checks latest-android.json on launch and sends you to the browser for the APK',
+    },
+  },
 }
