@@ -7,10 +7,19 @@ sidebar:
 
 import shot from '../../../../../../../docs/screenshots/dashboard.png'
 import ProductShot from '../../../../components/ProductShot.astro'
+import DiagramFlow from '../../../../components/DiagramFlow.astro'
+import { flows } from '../../../../data/flows'
 
-After sign-in the first page is the **dashboard**: a set of cards (Waiting on me, My requests, Quick start, Shortcuts, Messages for me, Announcement, Needs your attention, Service status, Sign-ins over the last 14 days). Each person chooses which to show, in what order and how wide; the layout is stored on the server, so signing in on another computer brings back the same one, and cards someone has no permission for never appear. Around the dashboard the interface has a few shared tools: the ⌘K command palette, keyboard shortcuts, a product tour, appearance settings in Profile, column visibility and order on lists, a per-user time zone and language, and a refresh prompt when a new version is deployed. Tabs are covered separately in [Multi-tab](/en/features/multi-tab/).
+After sign-in the first page is the **dashboard**: waiting on me, my requests, quick start, shortcuts, messages, notices, service status… Everyone picks which cards to show, in what order and how wide, and gets the same layout on any computer; cards you have no permission for simply don't appear. Beyond the dashboard the whole UI shares a few things: the ⌘K command palette, keyboard shortcuts, a product tour, appearance settings, column visibility and order in lists, a personal time zone and language, and a refresh prompt when a new version ships. Multi-tab is covered separately in [Multi-tab keep-alive](/en/features/multi-tab/).
+
+This page first tailors the dashboard, then the order in which it decides which cards to show, then the command palette, appearance, time zone and language, and common problems.
+
+<details>
+<summary>Show the dashboard</summary>
 
 <ProductShot src={shot} alt="Dashboard" url="localhost:8888/dashboard" />
+
+</details>
 
 ## UI entry points
 
@@ -24,6 +33,22 @@ After sign-in the first page is the **dashboard**: a set of cards (Waiting on me
 | Display time zone | Profile → **Profile** | Server, per user |
 | Language | User menu at top right → **Language**; also on the sign-in page | Browser |
 | List **Columns** | At the right of each list's header | URL |
+
+## Quick start
+
+Make the dashboard your own, about three minutes:
+
+1. Click **Custom** at the top right of the dashboard.
+2. Turn on Notices (hidden by default), drag it to the front and set its width to half.
+3. Pick a few pages you use every day under Shortcuts and save: *Dashboard layout saved*.
+4. Sign in with the same account in another browser (or a private window): the layout is the same.
+5. Press ⌘K (Ctrl+K on Windows), type "user" and press Enter to jump to Users; press `?` for all shortcuts.
+
+## Card display order
+
+When the dashboard opens, it decides which cards to show in this order:
+
+<DiagramFlow {...flows.dashboard.en} />
 
 ## Cards and visibility
 
@@ -119,6 +144,38 @@ Every 10 minutes, and whenever the browser tab regains focus (at most once a min
 5. **Never change a card's `id`**: saved layouts identify cards by it, so a rename means one card removed and a new one added.
 
 **Adding a command palette action**: add it to `actionItems` in [`shell/command-menu.tsx`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/shell/command-menu.tsx); new pages appear automatically once they have a menu row. **Adding a shortcut** has no registry: add your own listener, call `preventDefault` for modifier combinations, check that single keys are not typed into an input, and add a line to `shortcuts-dialog.tsx`. **Adding a tour step**: add the step in `shell/tour/shell-tour.ts`, put `data-tour` on the target element (`pnpm arch:check` fails if the target does not exist).
+
+## Troubleshooting
+
+### A card is missing
+
+Check in order: is it hidden under **Custom** (Notices is hidden by default)? Do you have the permission it needs (see [Cards and visibility](#cards-and-visibility) — the 14-day visits card needs `log:login:list`, for example)? The three approval cards need the approval center in your sidebar.
+
+### Custom is greyed out
+
+Symptom: a notice at the top says `Could not load your saved dashboard layout`.
+
+Cause: loading the layout failed. The default layout is shown and **editing is blocked** — saving now would overwrite the layout you really have on the server.
+
+Fix: click retry in the notice; once it loads you can edit.
+
+### Layout reset to default
+
+Symptom: `Your saved dashboard layout could not be read, so the default layout is shown. Customize and save once to replace it.`
+
+Cause: the stored layout couldn't be read at all (rare — hand-edited, say). Customize and save once.
+
+### Appearance differs elsewhere
+
+Theme colour, radius, density and tab style are stored **in the browser**, not the account, so a new browser starts from the defaults. The dashboard layout and time zone follow the account.
+
+### Times look wrong
+
+Times are shown in **your own time zone** (Profile → details, `Asia/Shanghai` by default), not the computer's. After changing it, refresh the data in tabs that are already open.
+
+### Palette can't find a page
+
+The command palette lists only pages **in your sidebar**: pages you lack permission for, or hidden menus, don't appear. It doesn't search business data (usernames, request numbers…).
 
 ## Limitations
 

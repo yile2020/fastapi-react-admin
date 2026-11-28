@@ -365,4 +365,30 @@ export const flows = {
       caption: 'If the backend process is down entirely, nginx answers 503 with {"status":"unavailable"} and Retry-After: 15',
     },
   },
+  /**
+   * packages/platform/src/pages/dashboard：index.tsx 读 /me/preferences/dashboard.layout（失败 → 默认布局 + 禁止编辑）
+   * → layout.ts 的兼容规则（认不出的卡片忽略、新卡片排最后、整份认不出回落默认并提示）→ cards/registry.ts 的 available 按权限过滤
+   */
+  dashboard: {
+    zh: {
+      steps: [
+        { name: '读你的布局', sub: '存在服务端，跨设备同一份', branch: { when: '读取失败', name: '先用默认布局', sub: '读到之前不能编辑' } },
+        { name: '兼容旧布局', sub: '新卡片排最后，认不出的忽略', branch: { when: '整份认不出', name: '用默认布局', sub: '顶部提示，保存一次即覆盖' } },
+        { name: '按权限过滤', sub: '每张卡片和它的接口同一套条件', branch: { when: '没有权限', name: '这张卡片不出现', sub: '不画无权限的空壳' } },
+        { name: '各卡片取数', sub: '每张卡片一个接口', branch: { when: '某个接口失败', name: '只有这张报错', sub: '带重试，别的照常' } },
+      ],
+      end: { name: '你的工作台', sub: '「自定义」随时改' },
+      caption: '外观（主题色、圆角、密度、页签样式）存在浏览器本地，不跟账号走；只有工作台布局和时区存在服务端',
+    },
+    en: {
+      steps: [
+        { name: 'Load your layout', sub: 'Stored on the server, same on every device', branch: { when: 'Load fails', name: 'Default layout for now', sub: 'No editing until it loads' } },
+        { name: 'Upgrade old layout', sub: 'New cards go last, unknown ones are ignored', branch: { when: 'Unreadable', name: 'Default layout', sub: 'A notice; saving once replaces it' } },
+        { name: 'Permission filter', sub: 'Each card uses its API’s own rule', branch: { when: 'No permission', name: 'Card not shown', sub: 'No empty "no access" shells' } },
+        { name: 'Cards fetch data', sub: 'One API per card', branch: { when: 'One API fails', name: 'Only that card errors', sub: 'With retry; the rest work' } },
+      ],
+      end: { name: 'Your dashboard', sub: 'Change it any time with Custom' },
+      caption: 'Appearance (theme colour, radius, density, tab style) is stored in the browser and does not follow the account; only the dashboard layout and time zone live on the server',
+    },
+  },
 }
