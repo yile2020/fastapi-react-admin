@@ -10,8 +10,9 @@
 | macOS Apple Silicon | `...-arm64.dmg` | M1 及以后 |
 | macOS Intel | `...-x64.dmg`（文件名不带 arm64） | |
 | Linux x64 | `...-x86_64.AppImage` | `chmod +x` 后直接运行，不用装 |
+| Android 手机 | `admin-mobile-<版本>.apk` | 手机 App（原生界面，不是网页套壳）。用浏览器下载后点开安装，首次要允许「安装未知应用」 |
 
-`.blockmap` 与 `latest*.yml` 是**自动更新**用的，人不需要下载。
+`.blockmap`、`latest*.yml` 与 `latest-android.json` 是**自动更新 / 检查更新**用的，人不需要下载。
 
 ## 装完第一件事：填后端地址
 
@@ -20,7 +21,7 @@
 
 ## 已知限制（都是刻意的取舍，不是漏做）
 
-- 🔴 **所有平台的包都没有代码签名。**
+- 🔴 **桌面端的包都没有代码签名**（Android 的 APK 用正式证书签了名，不受下面这几条影响）。
   - Windows：SmartScreen 会拦一次 →「更多信息」→「仍要运行」
   - macOS：Gatekeeper 会说**「已损坏，应移到废纸篓」**。这不是包坏了，是没有公证：
     右键 →「打开」，或者 `xattr -dr com.apple.quarantine /Applications/Admin\ Desktop.app`
@@ -39,5 +40,11 @@
 默认读这个仓库的 Release。内网部署（客户出不去公网）可以在客户机的 `config.json` 里
 填 `updateUrl`，指向自己的静态目录 —— **不用为内网单独打一版**。
 不想让某台机器自动升级（要钉版本），在它的 `config.json` 里写 `"autoUpdate": false`。
+
+## 手机 App
+
+Android 正式包启动时读这个仓库最新正式版里的 `latest-android.json`，有新版就提示用浏览器下载、下载完点开覆盖安装
+（设置 →「检查更新」也能手动查）。更新地址是**打包时**定的，装好之后不能改；要指向自己的服务器得用仓库变量
+`MOBILE_UPDATE_MANIFEST_URL` 重新打包。iOS 暂无安装包。
 
 ---

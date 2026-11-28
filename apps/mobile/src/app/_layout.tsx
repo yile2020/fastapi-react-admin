@@ -13,6 +13,7 @@ import { useUniwind } from 'uniwind'
 import { appearanceStore } from '@/lib/appearance'
 import { setupI18n } from '@/lib/i18n'
 import { Toaster } from '@/components/ui/toast'
+import { UpdatePrompt } from '@/components/update-prompt'
 import { QueryProvider } from '@/lib/query'
 import { useNavTheme } from '@/lib/theme'
 import { SessionProvider, useSession } from '@/lib/session'
@@ -86,6 +87,8 @@ export default function RootLayout() {
         <SessionProvider>
           <AuthGate />
         </SessionProvider>
+        {/* 发现新版本的提示（#461）：放在两棵路由树外面，登录屏上也弹 */}
+        <UpdatePrompt />
       </QueryProvider>
       <PortalHost />
       {/* 🔴 `Toaster` 走 `<Portal>`，所以要在 `PortalHost` **之后**挂 ——

@@ -108,6 +108,17 @@ Google 的 AI features 文档：
 | 7 | 代码位置 · 测试 | 完整 GitHub 链接（上面那道检查会核对）；测试写文件名、条数和它证明了什么 |
 | 8 | 在线体验 | 推荐一条操作路径；演示站是共用的，会影响别人的操作要提醒 |
 
+**2026-11-28 补的三节**（用户拿一个参考站的「登录安全」页对比后定的：「写的要人愿意看，系统才有人愿意用」）。参考站好读不在字数，在于它回答的是**读者遇到事时要问的话**：
+
+| 章节 | 放哪 | 写什么 |
+|---|---|---|
+| 上手步骤 | 界面入口之后 | 3～5 步编号，用种子数据从零走到「看到结果」，每步写在哪个菜单点什么、要什么权限，最后一步写**怎么确认成了** |
+| 处理顺序 | 上手步骤之后 | 有先后、会失败的机制（审批推进、登录校验、上传、投递…）画一张 `DiagramFlow`：主路径 + 每步失败时去哪、算不算次数。数据在 `src/data/flows.ts`，**画之前读一遍代码，并在数据旁注明核对的函数**。图下 2～3 条要点只写图里表达不了的规则 |
+| 常见问题 | 已知限制之前 | h3 写短的现象，第一行 `现象：` 后跟**界面 / 接口返回的原文**（从 `backend/locale/*.yml`、`packages/i18n` 里抄，别意译），再写原因和编号的处理步骤。挑真会遇到的：配置没生效、被拒、删不掉 |
+
+实现细节（SQL、并发护栏、内部函数名）不放在管理员会读到的正文里，收进 `<details>`，原来的 h2 锚点用 `<span id>` 留住。
+样板：[`approval-workflow.mdx`](src/content/docs/features/approval-workflow.mdx)。
+
 教程按「执行目录 → 前提 → 编号步骤 → 当步验收 → 常见问题 → 下一步」组织；删除或覆盖数据的提醒放在命令**之前**。折叠块用于可选排查和实现细节，必做步骤、权限和已知限制保持可见。拆页保留原 URL 和已有锚点，原位置放指向新内容的链接。
 
 🔴 **内页的顶部分类和左侧文章来自同一份登记表**：`src/navigation.mjs` 的 `DOC_SECTIONS`。
@@ -185,7 +196,7 @@ Starlight 0.39 起不再支持 `autogenerate` 和 `label` 写在同一层。
 - ⚠️ `DiagramMonorepo` 的共享包高亮是各客户端 `package.json` 里**真实**的直接 workspace 依赖，改了依赖要同步组件里的映射
 - 多端展示的 Web 画面直接用 `docs/screenshots/dashboard.png`；桌面复用该画面。手机是按
   `apps/mobile/src/components/brand-top.tsx`、`grouped.tsx` 和原生首页还原的示意，注明非设备实拍；
-  调整这块时对照现有客户端界面与 `features/clients.md`，不要为三端杜撰同一套仪表盘
+  调整这块时对照现有客户端界面与 `features/clients.mdx`，不要为三端杜撰同一套仪表盘
 - ⚠️ hero 的同心圆和收尾水印会伸出内容列：横向溢出裁在 `.main-frame` 上（`overflow-x: clip`）。
   裁 `html` / `body` 没用 —— 那会传给视口变成 `hidden`，实测 `scrollTo` 照样横移 230px（触屏能不能拖没测）
 - ⚠️ 只给首页加样式时选择器挂在 `:root[data-has-hero]` 上（Starlight 只给带 hero 的页加这个属性），
@@ -333,7 +344,7 @@ README、文档站首页和分享卡片（`og.png`）用的是同一批图，界
 
 - 文字在 `src/data/architecture.ts`（中英文各一份），页面里只写一行 `<DiagramArchitecture {...architecture.zh} />`。
   🔴 **别把 props 直接写进 MDX**：`src/lib/markdown.ts` 导出给 AI 读的 `.md` 时只去掉**独占一行**的组件标签，跨多行的 props 会原样漏进 `.md` 和 `llms-full.txt`
-  （`guides/project-structure.mdx` 的 `DiagramRequestFlow` 现在就是这样漏的）。实测：改成一行之后 `/getting-started/introduction.md` 的这一节只剩说明文字
+  （`guides/project-structure.mdx` 的 `DiagramRequestFlow` 原来就这样漏过，2026-11-27 也挪进了 `src/data/request-flow.ts`）。**一行的标签里属性值也不能带 `>`**：去标签的正则是 `[^>]*`，`hop="Bearer <token>"` 会让整行留在 `.md` 里（实测踩过）。实测：改成一行之后 `/getting-started/introduction.md` 的这一节只剩说明文字
 - 每个模块都对着真实目录写：`apps/*`、`packages/*`、`backend/app/admin/api/v1/{auth,sys,log,monitor}`、`backend/app/task`、`backend/plugin/*`（以 `plugin.toml` 的 summary 为准）、
   `backend/common/*`、`apps/web/nginx.conf`。**加了 / 删了模块或插件时回来改 `architecture.ts`** —— 图和代码对不上没有任何检查会红
 - ⚠️ `.md` 改名成 `.mdx` 后，开着的 `astro dev` 会报「slug 在侧边栏配置里不存在」、页面 500：内容缓存没跟上，重启 dev 就好，构建不受影响
@@ -341,13 +352,17 @@ README、文档站首页和分享卡片（`og.png`）用的是同一批图，界
 ## 开发指南的「技术架构与项目结构」页（`guides/project-structure.mdx`）
 
 跟着用户列表这一次请求（`GET /api/v1/sys/users`）从路由文件走到数据库，再给一张「想改什么去哪找」的表。
-开头那张流向图是 `src/components/DiagramRequestFlow.astro`，文字全走 props，中英文各传各的。
+开头那张流向图是 `src/components/DiagramRequestFlow.astro`，文字在 `src/data/request-flow.ts`（中英文各一份），页面里只写一行展开 props。
 
 - 表里每个文件都写成指向 `main` 的完整 GitHub 链接 —— `check-links.mjs` 会离线核对路径在不在，文件挪了构建就红。
   **所以别把路径写成不带链接的行内代码**，那样挪了目录没人知道
 - ⚠️ 链接只保证「文件还在」，不保证「说的还对」：符号名（`usersQuery`、`get_users_paginated`、`DataScopedCRUD`、
   `resolveEnvelope`、`stringify_unsafe_ints`）和权限码 `sys:user:list` 是 2026-11-11 逐个 grep 核对过的，重构这条链路时回来改这一页
 - 刻意没写行号（会漂），也没写路由守卫用的是哪个权限码
+- 「一次请求的链路」那十步是 `src/components/FlowSteps.astro`（2026-11-27 从表格改的：用户说表格看不出先后）。**步骤写在 MDX 正文里的有序列表**，组件只排版，
+  所以导出给 AI 的 `.md` 里这一节是完整的列表；改成 props 传数据的话 `.md` 里只剩空白。每步第一段是「**短名字** [`文件`](链接)」，后面是说明
+- ⚠️ 两位数编号（`10.`）的续行要缩进 **4** 个空格，缩 3 个的话说明会掉出列表、变成列表外面的一段（实测踩过）
+- ⚠️ 文件小标签不能用 `inline-flex`：flex 子项默认 `min-width: auto`，长路径不换行，手机 390 宽时页面被撑到 466（实测）
 
 ## 顶栏：首页是两块咬合的榫卯，内页是通栏（2026-11-11）
 

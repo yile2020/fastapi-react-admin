@@ -115,3 +115,19 @@ HTTPS 生产配置另外显式设 `COOKIE_SECURE=true`（生产示例已开启�
 本地使用缓存的 nginx 1.31.3（生产固定镜像拉取超时），CI 默认读取 Dockerfile 中固定的镜像版本。
 后端 `test_cookie_transport.py` 用真实 Uvicorn 代理中间件验证 refresh / OAuth2 cookie 的设置与清除，12 条通过：
 可信 HTTPS 加 Secure、HTTP 不加、不可信代理头不生效、显式 true / false 优先；移除 prod 告警后对应 2 条测试失败。
+
+## E2E 用的构建（`VITE_E2E_HOOKS` · `dist-e2e`）
+
+`e2e/playwright.config.ts` 的 `PREVIEW`：设了 `CI` 或 `E2E_PREVIEW=1` 时，前端是 `vite build` + `vite preview`，
+不是开发服务器（开发服务器不打包，登录页冷加载 633 个请求，构建产物 8 个；CI 上每片的用例步骤从 5–7 分钟降到 2–4 分钟）。
+本地默认还是开发服务器。三件事要记住：
+
+- 🔴 **用例拿应用内部对象只能走 `window.__e2e`**（`api` / `endSession` / `tokenStore`，`src/main.tsx` 在
+  `VITE_E2E_HOOKS=1` 时挂上）。按开发服务器的模块地址 `import("/@fs/…/token-store.ts")` 在构建产物上不存在 ——
+  实测（PR #465 第一轮 CI）：`presence-reconnect` / `refresh-identity` 5 条全挂，报 `token store was not loaded`，
+  而本地开发服务器上是绿的。要多拿一个对象就往那个钩子里加，别再按地址 import。
+- 🔴 **E2E 的构建写在 `apps/web/dist-e2e`，不能写 `dist`**：带钩子的包能读到内存里的 access token，
+  而桌面端打包直接抓 `../web/dist` 且不重建。static job 里有一步核对生产构建里没有 `__e2e`。
+- `BUILD_ID` 钉成 `dev`（和开发期编译进去的值相同），否则 `new-version.spec.ts` 会被真的轮询抢先弹出卡片。
+- ⚠️ 本地 `reuseExistingServer` 是开着的：1126 上已经有一个前端在跑时，`E2E_PREVIEW=1` **不会**重新构建，
+  实际测的是那个已有的服务。要照 CI 跑就先把 1126 上的进程停掉。

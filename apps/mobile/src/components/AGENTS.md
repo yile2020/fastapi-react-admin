@@ -407,3 +407,34 @@ web 的抽屉每次打开是新挂载、碰巧没踩到。
 登录屏入口在 Maestro `e2e/flows/server-from-login.yaml`：连不上的地址报错 → 换成 `127.0.0.1:8001`（CI 里 `adb reverse`）→ 登录屏显示新地址 → 登录成功。
 评审跟进加的 7 条（宽松主机 · 同主机换端口要等 · A→B→A 要等 A · 探测取消不换 · 探测失败分类）修前全红、修后全绿（2026-11-22 本机 `node --test`）。
 ⚠️ **没验的**：这条 Maestro 只在 CI 上跑（本机没有模拟器）；第一次 CI 跑红过一次（光标落在中间，见 [`e2e` 分册](../../e2e/AGENTS.md)），改完之后的那次以 CI 结果为准；iOS（含 Keychain 跨重装留着地址）一次没跑；真机上没点过。
+
+## 检查更新（`update-prompt.tsx` · `lib/app-update.ts` · `lib/use-app-update.ts`，#461）
+
+读发版时传进 GitHub Release 的 `latest-android.json`（怎么出的见 [`scripts/` 分册](../../scripts/AGENTS.md)「发版」一节）。
+启动时的提示（根 `_layout.tsx`，两棵路由树外面，登录屏上也弹）和设置页「检查更新」那一行共用一份查询。
+
+- 只在 **Android** 上查；启动时只在**发版打的正式包**里自动查（`AUTO_CHECK`）：Metro 开发包不查；版本带 `-dev` 的也不查 ——
+  仓库里 `app.json` 的占位是 `0.0.0-dev`，本地 `apk` 脚本、Run workflow 试跑、手机端 E2E 打的都是它。这些包是调试证书签的，
+  提示去下的正式包装不上（签名不一致，系统只说「应用未安装」）；E2E 包里一弹窗还会挡住 Maestro 的点击（评审第 4 条）
+- 🔴 **会话结束清缓存时要留着这份查询**（`lib/session-cache.ts`）。原来 `applyAnonymous` 是 `qc.clear()`：未登录冷启动时
+  `restoreSession()` 很快 401 → 清缓存，正好落在去 GitHub 读清单的路上，查询被删、请求被静默取消，启动提示的观察者永远停在
+  「加载中」—— **登录屏上的新版本提示从来不出现**。模拟器实测没撞上，是因为假清单服务在本机、比清缓存先回来（评审第 1 条）
+- 设置页手动查到新版时启动提示那个框也会弹（同一份查询），刻意没拦：那是用户自己点的检查
+- 🔴 **失败不能显示成「已是最新」**（硬纪律 9）：设置页那一行分五种 —— 点按检查 / 检查中 / 检查失败点按重试 / 已是最新 / vX 可下载。
+  清单 404（还没发过带 APK 的正式版）、清单形状不对、认不出当前版本号，一律是「检查失败」。桌面端踩过反例（`apps/desktop/src/main/updater.ts` 头注释）
+- 启动时自动检查失败**不弹**：失败在设置页看得到，启动就弹错误打断人不值当
+- 「下载」交给系统浏览器（`Linking.openURL`），下载完由系统安装器接手。应用内下载 + 调起安装要 `REQUEST_INSTALL_PACKAGES` 和 FileProvider，没做
+- 「以后再说」只管这一次启动（模块级记一笔）
+- 清单读 `releases/latest/download/…`（GitHub 跳到最新**正式** Release，草稿和预发布不算；不走 API，没有 60 次/小时的限额），
+  `EXPO_PUBLIC_UPDATE_MANIFEST_URL` 构建期可换；10 秒超时 —— 连 GitHub 不通时常常是挂住，不是立刻失败
+
+**实测证据**：`tests/session-cache.test.mjs` 2 条（真 QueryClient：清会话缓存后路上的检查照样落地；对照组 `qc.clear()` 停在 `fetching`、拿不到结果）。`tests/app-update.test.mjs` 11 条（`pnpm --filter @admin/mobile test`）：版本按数值比、预发布比正式版旧、认不出的版本不当成一样、
+APK 按清单目录解析、清单形状不对抛错、404 是失败、挂住按超时报错。反向验证：版本改回按字符串比、404 改成返回「0.0.0」→ 对应两条红。
+- ⚠️ `ConfirmDialog` 的 `variant` 默认是 `destructive`（红色按钮，给删除用的），这里要显式传 `variant="default"` —— 第一版没传，「下载」是一颗红按钮
+- 带安装包大小的那句是**单独一个 key**：拆成两个 key 拼接时中文两句之间多出一个空格（实测「…都会保留。 安装包 30.0 MB」），英文又必须有空格
+
+**设备实测**（2026-11-27，Windows 侧 Android 模拟器 API 37 + Expo Go 57，清单地址指向本机一个假清单服务，临时打开开发包的启动检查）：
+登录屏上弹「发现新版本 v9.9.9」→ 点「下载」打开 Chrome、假服务收到 `GET /admin-mobile-9.9.9.apk`，弹窗关掉、回到 App 不再弹 ·
+设置页「v9.9.9 可下载」→ 关掉假服务重启 App：启动不弹，设置页「检查失败，点按重试」→ 清单改成 0.0.1 点重试：「已是最新版本」→ 改回 9.9.9 再点：「v9.9.9 可下载」·
+英文界面「Check for updates / v9.9.9 available」。⚠️ 没验的：正式包里的启动检查（开发包里是临时打开测的）、下载后的覆盖安装、iOS。
+

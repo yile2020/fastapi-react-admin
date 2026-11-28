@@ -1,7 +1,7 @@
 import { CheckIcon, ChevronRightIcon } from 'lucide-react-native'
 import { useTranslation } from 'react-i18next'
 import * as React from 'react'
-import { ScrollView } from 'react-native'
+import { ActivityIndicator, ScrollView } from 'react-native'
 
 import { Chevron, Group, GroupHeader, PressRow, Row } from '@/components/grouped'
 import { Icon } from '@/components/ui/icon'
@@ -13,6 +13,8 @@ import { BRAND } from '@/lib/brand'
 import { useServer } from '@/lib/server'
 import { useSession } from '@/lib/session'
 import { useRouter } from 'expo-router'
+import { openApkDownload } from '@/components/update-prompt'
+import { UPDATE_SUPPORTED, useAppUpdate } from '@/lib/use-app-update'
 
 const APPEARANCES: Appearance[] = ['system', 'light', 'dark']
 
@@ -81,6 +83,7 @@ export default function SettingsScreen() {
           <Text className="flex-1 text-[15px]">{t('版本')}</Text>
           <Text className="text-muted-foreground font-mono text-xs">{BRAND.version}</Text>
         </Row>
+        {UPDATE_SUPPORTED ? <UpdateRow /> : null}
         <Row>
           <Text className="flex-1 text-[15px]">{t('技术栈')}</Text>
           <Text className="text-muted-foreground shrink font-mono text-[10px]" numberOfLines={1}>
@@ -89,5 +92,36 @@ export default function SettingsScreen() {
         </Row>
       </Group>
     </ScrollView>
+  )
+}
+
+/**
+ * 「检查更新」那一行（#461）。和启动提示共用一份查询（`useAppUpdate`）：正式包里启动时已经查过，进来直接是结果。
+ * 🔴 四种结果分开写，尤其「失败」不能显示成「已是最新」（硬纪律 9）；有新版时点这一行就是下载。
+ */
+function UpdateRow() {
+  const { t } = useTranslation()
+  const q = useAppUpdate({ auto: false })
+  const latest = q.data?.kind === 'available' ? q.data.latest : null
+
+  let value: React.ReactNode
+  if (q.isFetching) value = <ActivityIndicator size="small" />
+  else if (q.isError) value = <Text className="text-destructive text-[14px]">{t('检查失败，点按重试')}</Text>
+  else if (latest) value = <Text className="text-primary text-[14px]">{t('v{{version}} 可下载', { version: latest.version })}</Text>
+  else if (q.data) value = <Text className="text-muted-foreground text-[14px]">{t('已是最新版本')}</Text>
+  else value = <Text className="text-muted-foreground text-[14px]">{t('点按检查')}</Text>
+
+  return (
+    <PressRow
+      testID="settings-check-update"
+      onPress={() => {
+        if (q.isFetching) return
+        if (latest) openApkDownload(latest.apkUrl, t)
+        else void q.refetch()
+      }}
+    >
+      <Text className="flex-1 text-[15px]">{t('检查更新')}</Text>
+      {value}
+    </PressRow>
   )
 }

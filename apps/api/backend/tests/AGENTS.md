@@ -459,3 +459,12 @@ datetime 的**偏移丢掉**、按 `+00:00` 存进 `datetimeoffset`。实测：`
 > `test_file.py` 里两条标了 🔴 的是**回归测试**，对应两个真出现过的 bug
 > （去重丢文件名 · 列表缺 `download_url`）。做过变异验证：把修复分别打回去，
 > 对应的测试会失败 —— 它们不是摆设。
+
+### 🔴 连接级的 `SET`（`LOCK_TIMEOUT` 之类）别在共享池的连接上设了再还原
+
+**症状**：测试自己全绿，之后别的测试偶发一个和它无关的 `1222 Lock request time out`。
+**根因**：`async_test_db_session` 的会话在提交 / 回滚时就把连接还回池（池是先进先出，`pool_use_lifo=False`）。
+「设 → 干活 → 提交 → `rollback()` → 再 `SET … -1` 还原」里，还原那句取到的是池里**另一条**连接，设过的那条原样留在池里。
+**修法**：要连接级设置的一方用自己的引擎（`NullPool`，用完 `dispose()`），设置挂在 `connect` 事件上（`test_m2m_lock_contention.py: _impatient_session`）；
+测试里自己 `create_engine` 的那种（`test_scheduler_api.py` 的 `spy`）泄漏不出去，不用管。
+**实测证据**（2026-11-27，SQL Server 私有库）：池里先放 4 条连接，照原写法跑一遍，再同时取出 4 条查 `@@LOCK_TIMEOUT`：`[-1, -1, 3000, -1]`（#463 评审抓到的）。

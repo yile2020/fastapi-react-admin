@@ -5,7 +5,26 @@ sidebar:
   order: 9
 ---
 
+import DiagramFlow from '../../../components/DiagramFlow.astro'
+import { flows } from '../../../data/flows'
+
 除了浏览器，仓库里还有两个客户端。`apps/desktop` 把同一份 web 构建产物装进 Electron，补上浏览器做不到的四件事：静默打印、通过原生助手进程接本地硬件、refresh token 由主进程托管、自动更新。每个 GitHub Release 都附带 Windows、macOS、Linux 三个平台的安装包。`apps/mobile` 是 Expo / React Native 原生 App，屏幕是单独写的，不是拿 WebView 套网页；请求客户端和语言包与 web 端共用。
+
+本页先带你装上桌面端和手机 App 并连上自己的后端，再讲桌面端怎么自动更新，然后是两个客户端各自的能力、限制和常见问题。
+
+## 上手步骤
+
+**桌面端**，大约 3 分钟：
+
+1. 到 [GitHub Releases](https://github.com/yile2020/fastapi-react-admin/releases) 下载自己平台的安装包（见下表），安装。没签名，系统会拦一次，放行方法见[常见问题](#windows-拦下安装包)。
+2. 第一次打开，在登录页填后端地址（如 `https://admin.example.com`），再用平时的账号登录。
+3. 以后要换环境，在登录页点「更换服务器」。
+
+**手机 App**（仅 Android），大约 3 分钟：
+
+1. 在同一个 Release 里下载 `admin-mobile-<版本>.apk`，在手机上打开安装。
+2. 登录页先设服务器地址：填好点「测试并保存」，它会先探一次这个地址，连得通才保存。
+3. 用账号密码或手机验证码登录。
 
 ## 桌面端下载
 
@@ -55,6 +74,10 @@ if (isDesktop()) {
 
 内网部署时，往静态目录放 `<版本>.exe`、对应的 `.blockmap` 和 `latest.yml`。`latest.yml` **必须最后放**，并且不能被缓存。`.blockmap` 用于差量下载，但第一次更新通常会回落成全量下载。
 
+## 更新流程
+
+<DiagramFlow {...flows.desktopUpdate.zh} />
+
 ## 安装包构建
 
 推一个 `v*` tag 就会触发 [`.github/workflows/release.yml`](https://github.com/yile2020/fastapi-react-admin/blob/main/.github/workflows/release.yml)。`prepare` job 先核对 tag、`apps/web/package.json` 的版本和后端 `__version__` 三者一致，再建**唯一一个**草稿 release。随后矩阵在 `windows-latest`、`macos-latest`、`ubuntu-latest` 上各自打包，每个平台只在自己的系统上出包。electron-builder 用 `--publish never`，产物由 `gh release upload` 上传，因为 electron-builder 自带的上传器曾经并发建出过两个草稿。草稿要有人先装一遍试过，再点发布。
@@ -70,15 +93,60 @@ if (isDesktop()) {
 - **登录：** 密码和手机验证码两种方式，都要先过图形验证码；开了二次验证的账号第二步输动态码（被强制、还没绑定的人要先到网页端扫码绑定）。access token 存在 `expo-secure-store`（Keystore / Keychain），绝不放 `AsyncStorage`。refresh token 留在 httpOnly cookie 里：在 Android 上实测，React Native 自带的 cookie jar 会自动回传它，冷启动后依然有效。
 - **服务器地址在 App 里设置**，存在设备上。保存前会先探一次 `/auth/captcha`，确认这个地址确实是一个能连通的后端。颜色令牌与 web 端是同一份 `oklch()`，在 Android 上实测逐像素一致。
 
+## 移动端更新
+
+打 `v*` tag 时，发版流水线把 Android 安装包 `admin-mobile-<版本>.apk` 和更新清单 `latest-android.json` 传进同一个 GitHub Release，和桌面安装包放在一起。
+
+- **App 里检查新版本**：Android 正式包启动时查一次，有新版就弹提示，点「下载」用浏览器下载安装包，下载完点开覆盖安装，登录和设置都会保留。设置页「关于」里有一行「检查更新」，随时能手动查；检查失败会显示「检查失败，点按重试」，不会显示成「已是最新版本」。
+- **版本号取自 tag**：打包时写进 `app.json`，`versionCode` 由版本号算出，保证一路递增。
+- **正式签名**：正式 tag 用仓库 Secrets 里的签名证书重签，没配就让这一步失败，不会发出用公开调试证书签的包。证书只生成一次，丢了就发不出能覆盖安装的升级包，要另外备份。生成和配置方法见 [`apps/mobile/scripts/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/mobile/scripts/AGENTS.md)。
+- **自己托管**：国内访问 GitHub 不稳，或者在内网部署时，把 Release 里的 APK 和 `latest-android.json` 两个文件原样放到自己服务器的同一个目录，构建时把仓库变量 `MOBILE_UPDATE_MANIFEST_URL` 指向这份清单。清单里写的是 APK 的文件名，App 按清单所在目录找安装包。
+
+暂不支持应用内下载并直接安装，也不支持不重装就更新界面代码的热更新（`expo-updates` 需要专门的更新服务器）。
+
 ## 移动端限制
 
 - 只在 Android 上手工验收过（登录 → 权限门控 → 列表翻页 → 详情 → 删除确认 → toast）。较新的屏幕，比如手机验证码登录和公告附件，目前只过了 `tsc`、ESLint 和打包。**iOS 一次都没跑过。**
 - 移动端没有自动化测试。CI 的闸门是 `pnpm build`，其中包括 `expo export --platform android`，只能挡住打包阶段的失败。
 - 没有实时推送：没接 socket.io，进入页面或下拉时刷新。系统推送、扫码、静默打印明确不在范围内。
-- 还没有发布过 APK。`pnpm --filter @admin/mobile apk` 只跑到原生模块编译那一步，而且用的是模板自带的 debug keystore，正式发布前要换成自己的 keystore。
+- 只有 Android 安装包。iOS 没有开发者账号就不能在应用商店外分发，所以不出包、App 里也不检查更新。
+- 还没打过带 APK 的正式 tag：发版流水线已经接好，第一次发版前要先在仓库 Secrets 里配好正式签名证书（见上一节）。
 - 改邮箱要走邮件验证码，目前只有网页端有；App 里邮箱是只读的。手机号可以在 App 的个人中心用短信验证码绑定。
 
 本地跑起来：先 `pnpm --filter api dev:host`（后端绑 `0.0.0.0:8088`），再 `pnpm mobile:dev`，把打印出来的 `exp://…:8800` 地址填进 SDK 57 版的 Expo Go。
+
+## 常见问题
+
+### Windows 拦下安装包
+
+安装包没有代码签名，SmartScreen 会拦一次：点「更多信息 → 仍要运行」。
+
+### macOS 提示已损坏
+
+同样是没签名。右键应用 →「打开」，或执行 `xattr -dr com.apple.quarantine "/Applications/Admin Desktop.app"`。macOS 版也不会自动更新，新版本要手动下载安装。
+
+### 桌面端一直不更新
+
+按顺序查：是不是 macOS（不自动更新）；`config.json` 里是不是把 `autoUpdate` 关了；`updateUrl` 指向的内网目录里，`latest.yml` 是不是被缓存了、或者没放到最后。手动检查不受 `autoUpdate` 影响。
+
+### 桌面包是旧界面
+
+本地手动打包时漏了 `pnpm --filter web build`：桌面端的构建不会重新构建前端，打出来的是上一次的界面，而且不报错。
+
+### App 连不上服务器
+
+点「测试并保存」后的提示：
+
+| 提示 | 先查什么 |
+|---|---|
+| `10 秒内没有响应` | 手机和后端是否在同一网络；本地开发时后端要用 `pnpm --filter api dev:host` 绑 `0.0.0.0` |
+| `服务器返回 HTTP 502` 之类 | 地址对，但后端没起或反代配错 |
+| `这个地址不像是本项目的后端` | 地址填成了网页前端或别的服务 |
+| `连不上这个地址` | 生产环境要用**域名 + HTTPS**：证书是签给域名的，填 IP 会 TLS 失败 |
+
+### App 里改不了邮箱
+
+改邮箱要走邮件验证码，目前只有网页端有。手机号可以在 App 的个人中心用短信验证码绑定。
 
 ## 配置项
 

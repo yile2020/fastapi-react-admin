@@ -398,3 +398,45 @@ STAFF 这类「开了过滤、没有规则」的人连自己都查不到（同�
 - 迁移在 PostgreSQL 私有库上 up → down → up；MySQL / SQL Server 没在真库上跑过迁移（CI 的 SQL Server job 会跑模型 ↔ 迁移的一致性检查）
 
 **没验过**：真实平台认证器（Windows Hello / Touch ID / 安卓）· 手机扫码的跨设备（hybrid）流程 · Safari / Firefox · 桌面端和手机 App（入口隐藏：桌面端渲染层在 `app://local` 上，RP ID 对不上 —— 按规范推出，没实测）。
+
+## 🔴 SQL Server：删用户 × 用户导入提交互相死锁（1205），删两个不同的人也会（#455）
+
+**症状**：SQL Server（RCSI 关着）上并发删用户、导入用户提交，其中一个 500：`(1205) … chosen as the deadlock victim`，
+语句是 `SELECT sys_user_role.user_id, sys_user_role.role_id … WHERE user_id IN (?)` 或 `DELETE FROM sys_user_role WHERE user_id = ?`。
+另一个等满死锁检测的周期（最长 5 秒）后成功（CI run 45802588036：导入被挡 4.4 秒）。PostgreSQL 上永远碰不到。
+同一个形状不只这一对：**删两个不同的用户**、两个角色同时存权限矩阵，都会撞。
+
+**根因**：四张关联表（`model/m2m.py`）的主键是 `(id, 父列, 成员列)`，以雪花 `id` 领头，按父列（`user_id` / `role_id` / `data_scope_id`）
+删、查都用不上它，只能扫全表（实际扫的是 `ix_sys_user_role_id`，最窄的覆盖索引）。RCSI 关着时读也要加共享锁，扫描在**每一行**上要锁，
+排在别的事务没提交的行后面。删用户、导入、改角色都往这张表里写行，数据变更审计又在语句之前、提交之前各按父列拍一次快照
+（`common/data_change/capture.py: _snapshot`）—— 两个事务各攥着几行没提交的、又都去扫，就成环。
+
+**修法**：两处，缺一处都不够。
+- 四张关联表的父列建索引（迁移 `aw000000m2mparentidx`）。删除、`user_id = ?` 的查询改走 seek，只碰自己那几行
+- 审计按键取行一律经 `capture._by_keys`，SQL Server 上加 `WITH (FORCESEEK)`：**只有索引不够** —— 小表上 `user_id IN (20 个值)`
+  优化器宁可扫整个新索引也不做 20 次 seek（计划缓存里实测是 Index Scan），导入那条快照照样排在别人的行后面。
+  只在这一列确实领头某个索引时才加，没有可 seek 的索引时 `FORCESEEK` 直接报 8622
+- ❌ **没有做 1205 重试**（仓库里本来也没有，E2E 客户端那层重发是 #459 加的）：导入在提交前就 `GETDEL` 掉了令牌，整请求重放只会报「令牌过期」；
+  删除的会话撤销挂在后台任务上。结构上不成环比事后重发干净
+- ⚠️ 顺带看到的、**没改**：导入那批建号在保存点里，1205 时 SQL Server 已经回滚了整个事务，保存点退出时再报
+  `Cannot roll back sa_savepoint_1 … (6401)`，盖住了原来的 1205；`_user_commit` 把它吞成每行「这一行没有写进去，详情见服务端日志」，日志里只看得见 6401
+
+**实测证据**（2026-11-27，本机 SQL Server 2022，私有库 `fba_dlk_test`，真实的 `user_service.delete` / `USER_IMPORT.commit`，每方各一条连接）：
+
+| | 修之前 | 只加索引 | 索引 + FORCESEEK |
+|---|---|---|---|
+| 删 × 导入混跑（3 对 × 4 轮） | 16 次 1205 | 7 | 0（再跑 10 轮也是 0） |
+| 只删（6 个不同的人 × 4 轮） | 18 | 0 | 0 |
+| 只导入（6 批 × 4 轮） | 10 | 7 | 0 |
+| 4 个角色同时存权限 × 4 轮 | 7 | — | 0 |
+
+死锁图（`system_health` 的 `xml_deadlock_report`）：修之前全是 `sys_user_role / ix_sys_user_role_id` 上的 keylock，X 持有 / S 或 U 等待；
+只加索引之后变成 `ix_sys_user_role_user_id` 上的同一个形状。⚠️ 图里的 `inputbuf` 被打成 `*password---`（批里有 password 字样），
+语句要从 Python 侧那条异常的 `statement` 取。
+守卫是 `tests/api_v1/test_m2m_lock_contention.py` 4 条：两条行为测试（A 事务攥着没提交的行，B 在 `LOCK_TIMEOUT 3000` 下走真实的删除 /
+导入并提交，只在 SQL Server 上跑）+ 两条静态守卫（审计登记过的关联表 / 子表的父列必须领头某个索引 · `FORCESEEK` 只在 mssql、只在有索引时加）。
+变异：库和模型都撤掉索引 → 两条行为测试都红在 1222（`SELECT DISTINCT TOP 501 sys_user_role.user_id …` 和导入的 `IN (20 个参数)`），两条静态守卫也红；
+只去掉 `FORCESEEK` → 导入那条在**新建的小库**（10 行）上两次都红在 1222，⚠️ 但在被复现脚本灌到 2458 行的库上**照样绿**（表大了优化器自己选 seek）。
+迁移在 SQL Server / PostgreSQL 私有库上都是 up → down → up，四个索引按预期出现 / 消失；回归（审计 · 删用户 · 导入 · MFA · 第三方账号 · 迁移守卫）
+SQL Server 231 条、PostgreSQL 86 条（两条 SQL Server 专属的跳过）全绿。**没验过**：MySQL（InnoDB 的 DELETE 走扫描时也会锁每一行，按理同样受益，没跑过）·
+按 `role_id` 查 `sys_user_role`（给角色加人 / 摘人）这一侧没加索引，那条路径没复现过。

@@ -1,7 +1,7 @@
 """新增通行密钥表
 
 Revision ID: av000000userpasskey
-Revises: au000000aiproxydefault
+Revises: aw000000m2mparentidx
 Create Date: 2026-11-26 23:24:05.952749+08:00
 
 通行密钥（Passkey / WebAuthn）登录：一个用户可以有多把，一把一行。唯一键是凭据 ID 的 sha256
@@ -17,7 +17,7 @@ import backend.common.model
 
 # revision identifiers, used by Alembic.
 revision = 'av000000userpasskey'
-down_revision = 'au000000aiproxydefault'
+down_revision = 'aw000000m2mparentidx'
 branch_labels = None
 depends_on = None
 

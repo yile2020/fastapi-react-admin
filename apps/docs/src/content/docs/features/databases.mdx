@@ -5,14 +5,19 @@ sidebar:
   order: 8
 ---
 
+import DiagramFlow from '../../../components/DiagramFlow.astro'
+import { flows } from '../../../data/flows'
+
 后端可以跑在 PostgreSQL、SQL Server 或 MySQL 上：模型是同一套，Alembic 迁移链是同一条，三种库各有一份初始数据。选哪个由 `apps/api/backend/.env` 里的 `DATABASE_TYPE` 决定，默认 PostgreSQL。后端 fork 自 [fastapi-best-architecture](https://github.com/fastapi-practices/fastapi_best_architecture)（FBA），上游支持 PostgreSQL 和 MySQL。SQL Server 支持是本仓库加的，上游明确不合并，所以这是一次永久分叉。
+
+本页先列三种库的支持情况和切换步骤，再讲从改配置到能登录要过哪几关，最后是 SQL Server / MySQL 的适配细节和常见问题。
 
 ## 支持的数据库
 
 | | 驱动 | 本地怎么起 | 验证情况 |
 |---|---|---|---|
 | **PostgreSQL**（默认） | `asyncpg` | `docker compose -f docker-compose.dev.yml up -d`（PostgreSQL 16） | CI 的 `pytest · PostgreSQL` job：每次跑后端全套，外加一步空库上的迁移容错 |
-| **SQL Server** | `aioodbc` + 微软 ODBC Driver 18 | 同一份 compose 的 `--profile sqlserver`（SQL Server 2022） | CI 的 `pytest · SQL Server` job 跑后端全套；`playwright · E2E` 的前端端到端测试也连 SQL Server |
+| **SQL Server** | `aioodbc` + 微软 ODBC Driver 18 | 同一份 compose 的 `--profile sqlserver`（SQL Server 2022） | CI 的 `pytest · SQL Server` job 跑后端全套（只改了前端或文档的 PR 会跳过它，那时由 `pytest · PostgreSQL` 把关）；`playwright · E2E` 的前端端到端测试也连 SQL Server |
 | **MySQL** | `asyncmy` | 自备 MySQL 8.x | **不在 CI 里。** 2026-10-31 本地在 MySQL 8.4.13 上跑全套：1451 条，1433 过、18 跳过、0 红 |
 
 同一次 MySQL 验证还走了升级路径：用 v0.0.1 的 `fba init` 建库，再拿当前代码 `alembic upgrade head` 把整条链走完。结果是 56 张表，和模型比对结构差异为 0（只剩 1 条注释差异）。
@@ -47,6 +52,12 @@ sidebar:
 `DATABASE_PK_MODE` 必须保持 `'snowflake'`。三种库的初始数据都只有雪花 ID 版本，改成 `autoincrement` 后 `fba init` 找不到种子文件，会**一声不响地跳过**：表建好了，`admin` 账号却没有。另外，`pnpm db:init` 会先删库再重建。
 :::
 
+## 从配置到登录
+
+不管切到哪种库，都按下面的顺序走：
+
+<DiagramFlow {...flows.database.zh} />
+
 ## SQL Server 适配
 
 下面这些在本地默认的 PostgreSQL 上都测不出来，只有 CI 的 `pytest · SQL Server` 能拦住。
@@ -69,6 +80,42 @@ sidebar:
 - **PostgreSQL** 里一条语句失败，整个事务就作废了。所以「执行，已经做过就忽略」这类迁移步骤要包在 SAVEPOINT 里。到了 SQL Server，回滚 SAVEPOINT 反而会失败，只能用普通的 `suppress`。`c0000000comments` 迁移里的 `_tolerate_already_applied()` 两边都照顾到了。PostgreSQL 那个 CI job 会在空库上跑 `alembic upgrade c0000000comments`，专门把这条分支走一遍。
 - **MySQL** 的 `DATETIME` 默认只精确到秒。回收站「还原」按 `deleted_time` 相等来认「同一次删除」解开的关联，精度只到秒时，同一秒内手动移除的附件也被挂了回去（issue #132）。现在 `TimeZone` 在 MySQL 上映射为 `DATETIME(6)`，已有的库由迁移 `q0000000mysqldt` 升上来。`MODIFY` 会把整列重新定义，没写上的 `NOT NULL` 和注释会被静默丢掉，所以这条迁移先从 `information_schema` 读出可空性和注释，再原样写回去。
 - **数据迁移**不用任何方言专属的 upsert（`MERGE` / `ON CONFLICT` / `INSERT IGNORE`），而是先按业务键（`sys_menu.name`、`sys_role.code`）查一遍在不在，再决定插不插。三种库的种子 ID 本来就不同（PostgreSQL 的角色在 `4000000000000000…` 段，另两个在 `3000000000000000…` 段）。
+
+## 常见问题
+
+### 连 SQL Server 报找不到驱动
+
+现象：`Can't open lib ... ODBC Driver 18`
+
+原因：后端走 `aioodbc`，用的是**宿主机**上的 ODBC 驱动，容器里装的那份不算。
+
+处理：在跑后端的机器上装 Microsoft ODBC Driver 18，再确认 `DATABASE_DRIVER` 和 `odbcinst -q -d` 列出的名字一致。
+
+### 初始化完没有 admin 账号
+
+原因：`DATABASE_PK_MODE` 不是 `snowflake`。三种库的种子数据只有雪花 ID 版本，找不到对应文件时 `fba init` **不报错、直接跳过**。
+
+处理：改回 `DATABASE_PK_MODE='snowflake'`，重新 `pnpm db:init`（会删库重建）。
+
+### 生产环境启动被拒
+
+现象：启动日志里是 ``数据库迁移版本 [...] 不等于 head [...] —— 先跑 `alembic upgrade head` `` 或 `数据库里没有 alembic_version 表`。
+
+处理：先跑迁移（`pnpm db:upgrade`，生产上由 `migrate` 容器负责），再起 API。用 `create_all` 建出来、没打版本的库，按提示先 `alembic stamp` 再升级。
+
+### 中文存进去变成问号
+
+原因：列是 `VARCHAR`，SQL Server 按代码页存中文。存中文的列要用 `UniversalStr` / `UniversalText`（落成 `NVARCHAR`）。
+
+### 插入数据报 544
+
+原因：SQL Server 上迁移建出来的表把雪花主键建成了 `IDENTITY`。主键要用 `id_key`（显式 `autoincrement=False`），守卫测试会扫描迁移文件。
+
+### 用 sqlcmd 灌数据报 1934
+
+原因：表上有筛选唯一索引，需要 `QUOTED_IDENTIFIER ON`。
+
+处理：`sqlcmd` 加 `-I` 参数。
 
 ## 迁移用法
 

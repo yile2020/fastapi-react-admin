@@ -7,10 +7,19 @@ sidebar:
 
 import shot from '../../../../../../docs/screenshots/open-app.png'
 import ProductShot from '../../../components/ProductShot.astro'
+import DiagramFlow from '../../../components/DiagramFlow.astro'
+import { flows } from '../../../data/flows'
 
-能力开放插件让别的系统（HR、财务、数据仓库……）通过 `/api/open/v1` 从 fastapi-react-admin 拉取用户和部门，数据变了还能收到签名的 Webhook 推送。每个对接系统对应一个「应用」，发一对 Access Key / Secret Key。每个请求都用 HMAC-SHA256 签名（`FRA1-HMAC-SHA256`），再逐一核对应用的 scope、IP 白名单、有效期和限流。无论成功失败，每次调用都会落一条调用日志。
+让别的系统（HR、财务、数据仓库……）安全地从这里拉取用户和部门：每个对接系统发一对密钥（AK / SK），每次请求都签名；数据变了还能主动推送（Webhook）。对方用的是一组单独的、承诺长期兼容的接口 `/api/open/v1`，后台内部接口怎么改都不影响它。由能力开放插件（`plugin/open`）提供。
+
+本页先带你发一对密钥、签名调通第一次请求，再讲一个请求要过哪几道检查、各自失败时返回什么，然后是增量同步、Webhook 和常见问题。
+
+<details>
+<summary>查看应用管理截图</summary>
 
 <ProductShot src={shot} alt="能力开放：应用管理" url="localhost:8888/open/app" />
+
+</details>
 
 ## 界面入口
 
@@ -19,6 +28,36 @@ import ProductShot from '../../../components/ProductShot.astro'
 | **能力开放 → 应用管理** | `/open/app` | `open:app:list`；新建 `add` · 编辑 `edit` · 删除 `del` · 重置密钥 `reset` | 发 AK/SK，设 scope、IP 白名单、限流、失效时间、启停 |
 | 应用管理里每个应用的 Webhook 抽屉 | —— | `open:webhook:list`；`add` · `edit` · `del` · `test` · `reset`（重置签名密钥）· `resend` | 登记端点、订阅事件、看投递记录、批量重发 |
 | 开放接口日志（应用管理页里点进去，不在侧边栏） | `/open/log` | `open:log:list` | 每一次开放接口调用，见[调用日志记了什么](#调用日志) |
+
+## 上手步骤
+
+本地调通第一次请求，大约 10 分钟：
+
+1. 在 `.env` 里配好 `OPEN_SECRET_KEY`（`openssl rand -hex 32`）并重启后端，否则新建应用会被拒。
+2. 打开 **能力开放 → 应用管理**，新建一个应用，scope 勾上 `user:read`。弹窗里的 Secret Key **只显示这一次**，当场复制。
+3. 把 [`fra_open_sign.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/open/sdk/python/fra_open_sign.py) 拷到你的项目里（单文件、只用标准库），然后：
+
+   ```python
+   import requests
+   from fra_open_sign import sign_headers
+
+   url = 'http://127.0.0.1:8088/api/open/v1/users?limit=10'
+   resp = requests.get(url, headers=sign_headers('GET', url, b'', access_key=AK, secret_key=SK))
+   print(resp.json())
+   ```
+
+4. 回到应用管理，点这个应用的「调用日志」：刚才那次调用是 `ok`，记着返回了几条、耗时多少。
+5. 故意把 SK 改错一位再调一次：返回 401，响应里的 `data.string_to_sign` 是服务端拼的待签名字符串 —— 以后自己写签名对不上时，就拿它逐行比对。
+
+## 处理顺序
+
+每个开放接口请求按下面的顺序检查，前一步没过就不再往下：
+
+<DiagramFlow {...flows.openApi.zh} />
+
+- **失败也有日志**：连 AK 都认不出来的请求也会记一行调用日志（应用为空），对接时先看日志里的失败码。
+- **限流按应用计**，不按 IP：一个应用多台机器一起调，共用同一个每分钟额度（默认 120）。
+- **白名单看的是真实来源 IP**：部署在 nginx / 负载均衡后面时，要把代理地址配进 `TRUSTED_PROXIES`，否则白名单看到的都是代理的地址。
 
 ## 开放接口范围
 
@@ -170,6 +209,49 @@ nonce 存活时间是窗口的两倍，所以窗口内的重放一定撞上 nonc
 | Java 11+ | [`sdk/java/FraOpenSign.java`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/open/sdk/java/FraOpenSign.java) | `signHeaders`、`verifyWebhook` |
 
 每份都是单文件、只用标准库，整个文件拷走即可。它们只负责**签名和 Webhook 验签**，不是带类型模型的完整 API 客户端。
+
+## 常见问题
+
+### 签名对不上
+
+现象：`签名不匹配，请对照返回的 string_to_sign 逐行核对`
+
+处理：把响应里的 `data.string_to_sign` 和自己拼的待签名字符串逐行比，哪一行不一样就是哪一段错了。最常见的四种：
+
+1. 查询参数里的 `+`、`:` 没有先编码（`updated_since=2026-10-20T00%3A00%3A00%2B08%3A00`）。
+2. 空格编成了 `+`，应该是 `%20`。
+3. 签的是一个对象，HTTP 库又重新序列化了一遍 —— 要签**实际发出去的那串字节**。
+4. 前面的代理改写了路径（Host 不参与签名，改 Host 没事）。
+
+### 时间戳超出范围
+
+现象：`时间戳超出允许范围（±300 秒），请校准服务器时钟`
+
+处理：调用方机器的时钟和服务端差了 5 分钟以上。响应里的 `data.server_time` 是服务端当前的毫秒时间，对照它校准时钟（开 NTP）。注意 `X-Timestamp` 是**毫秒**。
+
+### 提示疑似重放
+
+现象：`nonce 已被使用过，疑似重放请求`
+
+处理：每个请求都要换一个新的 `X-Nonce`，**重试也要换**。签名对不上的那次不占用 nonce，所以修好签名之后可以原样重发。
+
+### 来源 IP 不在白名单
+
+现象：`来源 IP 10.0.0.5 不在该应用的白名单内`
+
+处理：提示里的 IP 就是服务端看到的地址。如果它是你的 nginx / 网关地址，说明 `TRUSTED_PROXIES` 没配，服务端没采信转发头；把代理地址加进去重启后端。确实是调用方的地址，就把它加进应用的白名单。
+
+### 未被授权调用此接口
+
+现象：`该应用未被授权调用此接口（user:read）`
+
+处理：到应用管理里给这个应用勾上括号里那个 scope。scope 改完立即生效，不用换密钥。
+
+### 新建应用被拒
+
+现象：`未配置 OPEN_SECRET_KEY，无法安全保存 Secret Key`
+
+处理：同上手步骤第 1 步。SK 是加密存储的（验签时服务端要还原它），没有加密密钥就拒绝保存，不存明文。
 
 ## 测试
 

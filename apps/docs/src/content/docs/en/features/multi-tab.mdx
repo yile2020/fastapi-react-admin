@@ -7,10 +7,19 @@ sidebar:
 
 import shot from '../../../../../../../docs/screenshots/tabs.png'
 import ProductShot from '../../../../components/ProductShot.astro'
+import DiagramFlow from '../../../../components/DiagramFlow.astro'
+import { flows } from '../../../../data/flows'
 
-The admin shell keeps every opened page mounted at the same time and hides the inactive ones with React 19.2's `<Activity>` component. Switching tabs keeps the DOM and React state — a half-filled form, a collapsed tree node, a typed-in filter — and view state such as filters, paging and the selected row is also written to the URL, so it survives a page refresh too.
+Every page you open is a tab, and switching between them **loses nothing**: half-filled forms, folded tree nodes and unsent input stay as they were; filters and the current page number live in the URL, so even a browser refresh keeps them. Up to 20 tabs can be open, and frequently used ones can be pinned.
+
+This page first tries "switch away and nothing is lost — even after a refresh", then follows a tab from opening to refresh and what survives, then common problems and the rules developers must follow.
+
+<details>
+<summary>Show multi-tab</summary>
 
 <ProductShot src={shot} alt="Tabs and the tab menu" url="localhost:8888/log/change" />
+
+</details>
 
 ## UI entry points
 
@@ -24,6 +33,19 @@ The admin shell keeps every opened page mounted at the same time and hides the i
 | Appearance and switches | Profile → **Tabs**: show tab bar, tab appearance (Button / Card / Soft / Underline), icons, middle-click to close, drag to reorder. Stored in the browser, see [Workspace](/en/features/workspace/#appearance) |
 
 Turning off the tab bar only hides the bar; the tab mechanism itself keeps working (the switch only controls whether the bar is rendered), and the product tour skips its tabs step.
+
+## Quick start
+
+About two minutes:
+
+1. Open **System → Departments** and fold a department.
+2. Open **System → Roles**, then click back on the Departments tab: the node is still folded.
+3. Filter **System → Users** by department, go to page 2, then press F5: every tab comes back, and Users is still the filtered page 2.
+4. Right-click a tab and choose pin: it moves to the front and can't be closed.
+
+## Tab lifecycle
+
+<DiagramFlow {...flows.tabs.en} />
 
 ## Implementation
 
@@ -46,7 +68,7 @@ In `hidden` mode React keeps the DOM (with `display: none`) and the component st
 The tab list is a small zustand store ([`tab-store.ts`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/shell/tab-store.ts)), persisted in `sessionStorage` under `admin:tabs`:
 
 - The tab key is `routeId` + params, **without** search — changing a filter updates the tab instead of opening a second one.
-- At most 20 tabs. Opening a 21st closes the left-most unpinned tab.
+- At most 20 tabs. Opening a 21st closes the unpinned tab **used least recently** — not the oldest one, so an old tab you're working in isn't pushed out.
 - Pinned tabs sort first and can't be closed. The right-click menu has close, pin, reload, open in new window, and close left / right / others / all. Middle-click closes and tabs can be dragged (each within its pinned or unpinned group). These are switchable in the appearance settings.
 
 ## Keeping half-filled forms
@@ -127,6 +149,34 @@ Each tab root carries `data-tab` and `data-visible`. Scope queries to `[data-tab
 ## Sign-out and account switching
 
 Tabs are cleared on both login and logout, and the sync hook adds nothing while signed out (otherwise it re-added the current page right after logout, issue #29). Appearance preferences stay. Known gap: if an admin revokes a permission while the user is signed in, tabs already open stay until closed; opening one redirects to `/403`.
+
+## Troubleshooting
+
+### A tab closed by itself
+
+At most 20 tabs are open at once. Opening a 21st closes the one you switched to least recently (pinned tabs excepted). Pin the pages you use often and they'll never be closed.
+
+### Form gone after refresh
+
+A browser refresh clears memory: unsaved form input and hand-expanded tree nodes don't come back. Only what's in the URL survives — filters, page number, selection, the open detail. Save long forms before refreshing.
+
+### Background tab shows old data
+
+Background tabs pause polling and timers until you return. For fresh data right away, right-click the tab and reload, or use the list toolbar's refresh button.
+
+### One tab shows an error
+
+Symptom: the tab only shows `This page ran into an error`, with retry and *Close this tab*.
+
+Only that page broke; other tabs and their unsaved work are unaffected. Retry to reload it; if that fails, close it.
+
+### Tabs gone after switching accounts
+
+Intentional: signing in and out clears tabs, so the next person never sees the previous person's pages (including ones they can't access). Appearance settings are kept.
+
+### A tab opens Access denied
+
+Your permissions were revoked while the tab was open. Tabs already open stay until you close them.
 
 ## Rules for new pages
 

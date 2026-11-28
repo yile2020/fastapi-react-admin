@@ -7,10 +7,19 @@ sidebar:
 
 import shot from '../../../../../../docs/screenshots/scheduler.png'
 import ProductShot from '../../../components/ProductShot.astro'
+import DiagramFlow from '../../../components/DiagramFlow.astro'
+import { flows } from '../../../data/flows'
 
-定时任务存在数据库的 `task_scheduler` 表里，由 Celery beat 读出来按时派发、worker 执行。在「定时任务 → 任务调度」里新建、修改、启停一条任务，**不用重启 beat**：每次改动都会通知 beat 重新读表。每次执行的结果（成功 / 失败、返回值、异常栈、哪个 worker 跑的）记在「执行记录」里，保留 30 天。系统自带 11 条任务，日志清理、导出过期、通知投递、审批超时都靠它们。
+在界面上排定时任务：选一个后台任务、写好什么时候跑，保存就生效，不用重启任何进程。每次执行成没成功、返回了什么、报了什么错，都记在「执行记录」里。系统自带的日志清理、导出过期、通知投递、审批超时也都是这里的任务。
+
+本页先带你排一条任务并确认它跑了，再讲一条任务从保存到执行经过哪几步、每一步会在哪里卡住，然后是内置任务清单和常见问题。
+
+<details>
+<summary>查看任务调度截图</summary>
 
 <ProductShot src={shot} alt="任务调度：内置的定时任务" url="localhost:8888/scheduler/manage" />
+
+</details>
 
 ## 界面入口
 
@@ -19,7 +28,27 @@ import ProductShot from '../../../components/ProductShot.astro'
 | **定时任务 → 任务调度** | `/scheduler/manage` | 查看 `task:scheduler:list` · 新建 `add` · 修改与启停 `edit` · 立即执行 `run` · 删除 `del` | 任务列表、新建 / 编辑、cron 预览 |
 | **定时任务 → 执行记录** | `/scheduler/record` | 查看 `task:result:list` | 每次执行的状态、重试次数、执行节点；点时间看返回值和异常栈 |
 
-⚠️ 「任务调度」页的前端路由守卫认的是 `task:scheduler:edit`，不是 `list` —— 只授了查看的角色打不开这一页。「执行记录」页没有路由守卫，但它的列表接口要 `task:result:list`，没有这个码的人进得去、列表加载失败。
+两页的前端路由守卫分别认 `task:scheduler:list` 和 `task:result:list`：只要有查看权限就能打开，没有就跳到「无权访问」。
+
+## 上手步骤
+
+排一条「每周一早上 9 点给所有人发问候」，大约 3 分钟：
+
+1. 打开 **定时任务 → 任务调度**，点「新建」。名称随便填，「Celery 任务」从下拉里选 `notification.send_daily_greeting`。
+2. 调度类型选「定时」，填 `0 9 * * 1`（或用快捷按钮）。表单下方立刻列出「接下来 5 次」的触发时间，确认是周一 9:00 再保存。
+3. 不用等到周一：在列表里对这一行点「立即执行一次」。
+4. 打开 **定时任务 → 执行记录**，最上面一条是这个任务、状态成功；顶栏铃铛也收到了那条问候。
+5. 试完把它停用或删掉，免得每周一真的群发。
+
+## 处理顺序
+
+一条任务从保存到跑完，经过下面几步。到点没跑，就按这张图一步步往回查：
+
+<DiagramFlow {...flows.scheduler.zh} />
+
+- **改动立即生效**：保存、启停、删除之后 beat 下一拍就重新读表，不用重启。绕过界面直接改数据库的，最多 5 分钟后被兜底重读。
+- **时间按服务器时区算**：`30 2 * * *` 是 `DATETIME_TIMEZONE`（默认 `Asia/Shanghai`）的凌晨 2:30，和你浏览器在哪个时区无关。
+- **「立即执行一次」不看启停**：停用的任务也能手动跑一次，适合先验证再启用。
 
 ## 任务字段
 
@@ -93,6 +122,47 @@ cron 按 `DATETIME_TIMEZONE`（默认 `Asia/Shanghai`）的**墙上时间**算�
 5. 要随代码发一条默认调度：在种子 SQL 里加一行、再写一条数据迁移。**不要用 Celery 的 `beat_schedule`** —— 调度只有数据库这一个来源。
 
 **删数据的任务**另有几条规矩：分批删（先取一批 ID、再按 ID 删）；过滤用的列要有索引；按业务时间删，不按写入时间；处理过的行仍可能命中过滤条件时，用键集分页。细节在 [`app/task/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/task/AGENTS.md)。
+
+## 常见问题
+
+### 到点了任务没跑
+
+按处理顺序往回查：
+
+1. 执行记录里有没有这一条。没有的话，先看任务是不是「启用」，触发时间是不是按服务器时区算的。
+2. beat 在不在跑。`pnpm dev` 会一起起；生产环境看 `fba_beat` 容器。beat 没起时界面一切正常，只是永远不触发。
+3. 列表里这一行有没有标红（见下一条）。
+4. 这台 Redis 的 1 号库是不是还有别的项目的 Celery 在用，有的话换 `CELERY_BROKER_REDIS_DATABASE`。
+
+另外，每 60 秒及更频繁的内置任务本来就不写执行记录，找不到它们不算故障；要确认它们在跑，看[健康检查](/features/monitoring/#健康检查接口)里的 worker 心跳。
+
+### 列表里一行标红
+
+现象：「Celery 任务」那一列标红，提示 `这个任务没有注册 —— 调度会按时触发，但什么都不会执行`。
+
+原因：worker 里没有这个名字的任务 —— 代码被删了、改了名，或者对应的插件没装。
+
+处理：恢复代码或装上插件后重启 worker；不再需要就删掉这条调度。
+
+### 同一个任务跑了两遍
+
+原因：起了两个 beat。每个 beat 都会按时派发一次。
+
+处理：beat 全局只能有一个，worker 可以有多个。开发时 `-B`（把 beat 嵌在 worker 里）只用于单进程，多开几个 worker 别都带 `-B`。
+
+### 保存时 cron 被拒
+
+现象：`Crontab 表达式必须是 5 段（分 时 日 月 周）` 或 `Crontab 表达式无效`
+
+原因：这里是 Linux crontab 的 5 段写法（分 时 日 月 周）。Quartz 那种带秒、带 `?` 的 6～7 段写法不认。
+
+处理：用表单上的快捷按钮或构建器生成，下面的「接下来 5 次」对得上再保存。
+
+### 保存时提示任务未注册
+
+现象：`任务 xxx 未注册；可用的有：…`
+
+原因：「Celery 任务」只能选 worker 已经注册的任务。刚写的新任务要先重启 worker，才会出现在下拉里。
 
 ## 已知限制
 

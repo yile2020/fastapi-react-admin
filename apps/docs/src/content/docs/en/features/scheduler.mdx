@@ -7,10 +7,19 @@ sidebar:
 
 import shot from '../../../../../../../docs/screenshots/scheduler.png'
 import ProductShot from '../../../../components/ProductShot.astro'
+import DiagramFlow from '../../../../components/DiagramFlow.astro'
+import { flows } from '../../../../data/flows'
 
-Scheduled jobs live in the database table `task_scheduler`; Celery beat reads them and dispatches on time, and workers run them. Creating, editing, enabling or disabling a job under **Scheduler → Tasks** needs **no beat restart**: every change tells beat to re-read the table. The result of each run (success or failure, return value, traceback, which worker ran it) is kept under **Task history** for 30 days. The system ships 11 jobs, and log cleanup, export expiry, notification delivery and approval timeouts all depend on them.
+Schedule background jobs from the UI: pick a task, say when it should run, save — it takes effect right away, with no process restarts. Every run's outcome, return value and error is kept under **Task history**. The built-in log cleanup, export expiry, notification delivery and approval timeouts are all jobs here too.
 
-<ProductShot src={shot} alt="Tasks: the built-in scheduled jobs" url="localhost:8888/scheduler/manage" />
+This page first schedules a job and confirms it ran, then follows a job from saving to running and where each step can get stuck, and ends with the built-in jobs and common problems.
+
+<details>
+<summary>Show the scheduler</summary>
+
+<ProductShot src={shot} alt="Scheduler: built-in jobs" url="localhost:8888/scheduler/manage" />
+
+</details>
 
 ## UI entry points
 
@@ -19,7 +28,27 @@ Scheduled jobs live in the database table `task_scheduler`; Celery beat reads th
 | **Scheduler → Tasks** | `/scheduler/manage` | View `task:scheduler:list` · create `add` · edit and enable / disable `edit` · run now `run` · delete `del` | Job list, create / edit, cron preview |
 | **Scheduler → Task history** | `/scheduler/record` | View `task:result:list` | Status, retries and worker of each run; click the time for the return value and traceback |
 
-⚠️ The Tasks page's frontend route guard checks `task:scheduler:edit`, not `list`, so a role granted only viewing cannot open it. The Task history page has no route guard, but its list endpoint needs `task:result:list`; without it the page opens and the list fails to load.
+The two pages' frontend route guards check `task:scheduler:list` and `task:result:list`: viewing permission opens them, and without it you land on *Access denied*.
+
+## Quick start
+
+Schedule "greet everyone at 9 am every Monday", about three minutes:
+
+1. Open **Scheduler → Tasks** and click *New*. Name it anything and pick `notification.send_daily_greeting` from the *Celery task* list.
+2. Choose *Cron* and enter `0 9 * * 1` (or use a preset). The form immediately lists the next five run times — check they are Mondays at 9:00, then save.
+3. No need to wait for Monday: click *Run now* on the row.
+4. Open **Scheduler → Task history**: the top row is this job, succeeded; the bell in the top bar has the greeting.
+5. Disable or delete it afterwards, or it really will message everyone every Monday.
+
+## Processing order
+
+A job goes through these steps from saving to finishing. When something didn't run on time, walk back through this diagram:
+
+<DiagramFlow {...flows.scheduler.en} />
+
+- **Changes apply immediately**: after saving, enabling, disabling or deleting, beat re-reads the table on its next tick — no restart. Changes made directly in the database are picked up within 5 minutes.
+- **Times are in the server's time zone**: `30 2 * * *` is 2:30 am in `DATETIME_TIMEZONE` (`Asia/Shanghai` by default), whatever your browser's zone.
+- **Run now ignores the enabled switch**: a disabled job can still be run by hand — handy for checking it before enabling.
 
 ## Job fields
 
@@ -93,6 +122,47 @@ Scheduled jobs have nothing on the Config page; each job is configured in the UI
 5. To ship a default schedule with the code, add a seed SQL row and a data migration. **Don't use Celery's `beat_schedule`**: the database is the only source of schedules.
 
 **Jobs that delete data** have extra rules: delete in batches (select a batch of IDs, then delete by ID); index the filter column; filter by business time, not insert time; use keyset paging when processed rows can still match the filter. Details are in [`app/task/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/app/task/AGENTS.md).
+
+## Troubleshooting
+
+### Job didn't run on time
+
+Walk back through the processing order:
+
+1. Is there a row in Task history? If not, check the job is enabled and that the time was read in the server's zone.
+2. Is beat running? `pnpm dev` starts it; in production check the `fba_beat` container. Without beat the UI looks fine — jobs just never fire.
+3. Is the row flagged red (next entry)?
+4. Is another project's Celery also using database 1 on this Redis? If so, change `CELERY_BROKER_REDIS_DATABASE`.
+
+Built-in jobs that run every 60 seconds or more often never write task history, so not finding them is not a fault; to confirm they run, check the worker heartbeat in the [health check](/en/features/monitoring/#health-check-endpoint).
+
+### A row is flagged red
+
+Symptom: the *Celery task* column is red with `This task is not registered — the schedule will fire but nothing will run`.
+
+Cause: the worker has no task by that name — the code was removed or renamed, or its plugin isn't installed.
+
+Fix: restore the code or install the plugin and restart the worker; if it's no longer needed, delete the schedule.
+
+### A job ran twice
+
+Cause: two beats are running, and each dispatches on time.
+
+Fix: run exactly one beat; workers can scale. `-B` (beat embedded in a worker) is for single-process development only — don't put it on several workers.
+
+### Cron expression refused
+
+Symptom: `Crontab 表达式必须是 5 段（分 时 日 月 周）` or `Crontab 表达式无效` (these two messages are Chinese-only for now).
+
+Cause: this is the five-field Linux crontab format (minute hour day month weekday). Quartz-style six- or seven-field expressions with seconds or `?` are not accepted.
+
+Fix: build it with the presets or the builder, and save once the next five run times look right.
+
+### Task not registered on save
+
+Symptom: `Task xxx is not registered; available: …`
+
+Cause: *Celery task* only accepts tasks the worker has registered. A task you just wrote appears in the list after restarting the worker.
 
 ## Limitations
 
