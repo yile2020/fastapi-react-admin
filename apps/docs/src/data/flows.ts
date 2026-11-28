@@ -199,4 +199,34 @@ export const flows = {
       caption: 'A request with a bad signature does not burn its nonce: fix the signature and resend with the same nonce, and it is not treated as a replay',
     },
   },
+  /**
+   * 每个请求：common/security/jwt.py 的 get_current_user（账号 status → 部门 status → 角色全停）
+   * → rbac.py 的 rbac_verify（有启用角色 → 角色挂了菜单 → 非 GET 要 is_staff → 接口权限码）；超管在 rbac_verify 第一步放行
+   */
+  account: {
+    zh: {
+      steps: [
+        { name: '账号', sub: '状态是「正常」', branch: { when: '停用', name: '拒绝', sub: '用户已被锁定' } },
+        { name: '部门', sub: '所属部门启用', branch: { when: '停用', name: '拒绝', sub: '所属部门已被锁定' } },
+        { name: '角色', sub: '至少一个启用的角色', branch: { when: '没有', name: '拒绝', sub: '所属角色已被锁定' } },
+        { name: '菜单', sub: '角色至少勾了一个菜单', branch: { when: '一个没勾', name: '拒绝', sub: '用户未分配菜单' } },
+        { name: '写操作', sub: '新增 / 修改 / 删除要「后台登录」', branch: { when: '开关关着', name: '只能看', sub: '禁止后台管理操作' } },
+        { name: '权限码', sub: '接口要的码在某个角色的菜单里', branch: { when: '没有', name: '403', sub: '' } },
+      ],
+      end: { name: '放行', sub: '再按数据范围过滤行' },
+      caption: '超级管理员跳过最后三步。前三步在每个请求解析登录身份时就判，所以停用部门或角色，正在用的人下一个请求就被拒',
+    },
+    en: {
+      steps: [
+        { name: 'Account', sub: 'Status is active', branch: { when: 'Disabled', name: 'Refused', sub: 'Account is locked' } },
+        { name: 'Department', sub: 'Its department is enabled', branch: { when: 'Disabled', name: 'Refused', sub: 'Department disabled' } },
+        { name: 'Roles', sub: 'At least one enabled role', branch: { when: 'None', name: 'Refused', sub: 'Role disabled' } },
+        { name: 'Menus', sub: 'The roles tick at least one menu', branch: { when: 'None', name: 'Refused', sub: 'No menu assigned' } },
+        { name: 'Writes', sub: 'Create / update / delete need Admin sign-in', branch: { when: 'Switch off', name: 'Read-only', sub: 'Admin operations refused' } },
+        { name: 'Permission code', sub: "The API's code is in one of the roles' menus", branch: { when: 'Missing', name: '403', sub: '' } },
+      ],
+      end: { name: 'Allowed', sub: 'Rows then filtered by data scope' },
+      caption: 'Superusers skip the last three steps. The first three run whenever a request resolves who is signed in, so disabling a department or role refuses its users on their very next request',
+    },
+  },
 }
