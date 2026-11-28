@@ -257,4 +257,32 @@ export const flows = {
       caption: 'Login logs take a separate path: every sign-in attempt and security events like lockouts and forced sign-outs are written by the sign-in API itself',
     },
   },
+  /**
+   * plugin/installer.py（zip / git，开发环境才放行；页面安装不跑 SQL）→ plugin/core.py 启动时 parse_plugin_config / resolve_plugin_order
+   * （缺 plugin.toml、依赖缺失或成环抛 PluginInjectError / PluginConfigError，后端起不来）→ router.py 注入 → status.py 每个请求查启停
+   */
+  plugin: {
+    zh: {
+      steps: [
+        { name: '放进目录', sub: 'fba add 或插件管理页，只限开发环境', branch: { when: '包不合法', name: '拒绝安装', sub: '缺 plugin.toml / README' } },
+        { name: '建表与初始化', sub: '只有命令行安装会做', branch: { when: '从页面装的', name: '没有表', sub: '要再跑一次命令行' } },
+        { name: '重启后端', sub: '校验 plugin.toml、按依赖排序', branch: { when: '依赖缺失或成环', name: '后端起不来', sub: '启动日志写着原因' } },
+        { name: '挂路由与扩展点', sub: '通知类型 · 导入导出 · AI 工具…' },
+        { name: '每个请求查启停', sub: '状态存在 Redis', branch: { when: '停用', name: '接口报未启用', sub: '菜单照常显示' } },
+      ],
+      end: { name: '可以使用', sub: '前端页面要另外接' },
+      caption: '启停在页面上切换立即生效；安装、卸载、改 plugin.toml 都要重启后端',
+    },
+    en: {
+      steps: [
+        { name: 'Into the directory', sub: 'fba add or the plugin page, development only', branch: { when: 'Bad package', name: 'Install refused', sub: 'No plugin.toml / README' } },
+        { name: 'Tables & seed SQL', sub: 'Only the command line does this', branch: { when: 'Installed from the page', name: 'No tables', sub: 'Run the command line too' } },
+        { name: 'Restart backend', sub: 'Validates plugin.toml, orders by dependency', branch: { when: 'Missing or cyclic deps', name: "Backend won't start", sub: 'The startup log says why' } },
+        { name: 'Routes & extension points', sub: 'Notification kinds · import/export · AI tools…' },
+        { name: 'Per-request status check', sub: 'Status lives in Redis', branch: { when: 'Disabled', name: 'API says not enabled', sub: 'Menus still show' } },
+      ],
+      end: { name: 'Ready', sub: 'Frontend pages are wired separately' },
+      caption: 'Enabling and disabling on the page apply at once; installing, uninstalling or editing plugin.toml needs a backend restart',
+    },
+  },
 }
