@@ -7,10 +7,19 @@ sidebar:
 
 import shot from '../../../../../../../docs/screenshots/config.png'
 import ProductShot from '../../../../components/ProductShot.astro'
+import DiagramFlow from '../../../../components/DiagramFlow.astro'
+import { flows } from '../../../../data/flows'
 
-**Config** is a key / value table. When the backend needs a group of settings it reads them from the database and overrides the same keys from `.env`, so a change an admin makes in the UI needs no restart. The page is grouped by purpose (sign-in policy, passwords and lockout, sessions, email, notification delivery, webhooks, file uploads, log…), and each item has a description, a unit and an allowed range; the backend validates the range on write, so a bad value never lands in the database. The **data dictionary** is a separate table: a "dictionary type" with a list of items (label, value, colour, sort order), meant for drop-down options and status labels in business pages.
+**Config** lets admins change part of the system's settings from the UI — sign-in policy, password rules, session lengths, the mail server, uploads, log retention… Changes take effect immediately with no restart, and the backend refuses invalid values. The **data dictionary** is a "type → options" table (label, value, colour, order) that business pages use for dropdowns and status tags, maintained by operations staff themselves.
+
+This page first walks through both — changing a password rule and creating a dictionary for a page — then the order in which a setting takes effect, then the groups, how pages read dictionaries, and common problems.
+
+<details>
+<summary>Show the Config page</summary>
 
 <ProductShot src={shot} alt="Config: passwords and lockout" url="localhost:8888/plugins/config" />
+
+</details>
 
 ## UI entry points
 
@@ -20,6 +29,34 @@ import ProductShot from '../../../../components/ProductShot.astro'
 | **System → Data dictionary** | `/plugins/dict` | `dict:type:add` | Types `dict:type:list` · `edit` · `del`; items `dict:data:list` · `add` · `edit` · `del` · `import` · `export` |
 
 ⚠️ As with several other admin screens, these two pages' frontend route guards check the edit / create code rather than the view code, so a role granted only viewing cannot open them.
+
+## Quick start
+
+**Change a password rule**, about two minutes:
+
+1. Open **System → Config → Passwords & lockout**, set the minimum length to 200 and save: it's refused, with the allowed range (1–128).
+2. Set it to 8 and save. No restart: under **Profile**, a 6-character new password is now refused with `Password must be at least 8 characters`.
+3. Put the original value back.
+
+**Create a dictionary for a page**, about three minutes:
+
+1. Open **System → Dictionaries** and create the type "Customer level" with code `crm_level`.
+2. Add three items: Key / `A` / danger, Regular / `B` / primary, Prospect / `C` / grey.
+3. A page only needs the code — see [below](#reading-from-pages):
+
+   ```tsx
+   <DictSelect code="crm_level" value={level} onChange={setLevel} />
+   <DictTag code="crm_level" value={row.level} />
+   ```
+
+## Effect order
+
+A setting goes from saved to in effect in this order:
+
+<DiagramFlow {...flows.config.en} />
+
+- **While a group is on, database values override `.env`**: that's why turning the captcha off in `.env` does nothing — turn it off in Config, or switch the whole group off (see the [FAQ](/en/reference/faq/#captcha-required-despite-being-disabled)).
+- **Secret values are encrypted**: secret-looking keys such as the mail password are stored encrypted with `CONFIG_ENCRYPT_SECRET_KEY`; the API never returns them, and the UI shows *Configured; leave blank to keep*.
 
 ## Config groups
 
@@ -100,9 +137,41 @@ Config and the dictionary have no further switches. `dict` is a **required plugi
 
 Rules and pitfalls are in [`pages/config/AGENTS.md`](https://github.com/yile2020/fastapi-react-admin/blob/main/packages/platform/src/pages/config/AGENTS.md).
 
+## Troubleshooting
+
+### Value out of range
+
+Symptom: `USER_PASSWORD_MIN_LENGTH 必须在 1~128 之间，收到 200` (range messages are Chinese-only for now)
+
+Fix: use a value in the stated range. The range lives in the backend; the input box flags it too, and direct API calls are refused the same way.
+
+### Editing .env does nothing
+
+Cause: the group is on in Config, so database values override `.env`.
+
+Fix: change it in Config, or set the group's master switch (`<GROUP>_CONFIG_STATUS`) to `0` so the whole group uses `.env`.
+
+### Session policy not applied
+
+Session policy only affects **later** sign-ins; people already signed in keep the rules they signed in under. To apply new rules to everyone at once they have to sign in again (force them out under Online users, for example).
+
+### Saving the mail password fails
+
+Symptom: `No valid CONFIG_ENCRYPT_SECRET_KEY (16/24/32 bytes as hexadecimal), so config secrets cannot be encrypted`
+
+Fix: generate a key with `openssl rand -hex 32`, put it in `CONFIG_ENCRYPT_SECRET_KEY` in `apps/api/backend/.env`, restart the backend and save again. Upgrading from 1.1.0? See [Upgrading](/en/reference/upgrade/).
+
+### New item missing from dropdown
+
+Check in order: the item is *active* (disabled items aren't returned); the page's code matches the dictionary type code; refresh the page (the frontend caches dictionaries for 5 minutes). Changes clear the backend cache, so there's no 2-hour wait.
+
+### Grey raw values shown
+
+That value isn't in the dictionary — its item was disabled or deleted while old data still carries it. Re-activate the item, or update that data.
+
 ## Limitations
 
-- **Password-like values are only hidden on screen**: keys whose name looks like a secret, such as the email password, are shown in a password box that can be revealed, but the API returns them in plain text, so anyone who can open the Config page can read them. Data change history records only that they changed, not the value.
+- Secret values (keys ending in `PASSWORD`, `SECRET`, `TOKEN`, `API_KEY`…) can only be overwritten or cleared; the UI never shows the stored value, and data change history records only that they changed. Don't change `CONFIG_ENCRYPT_SECRET_KEY` once set — stored secrets could no longer be decrypted.
 - Keys you add yourself have no validation and no generic accessor; the "visible to frontend" flag has no effect in the backend.
 - The dictionary has no "built-in, read-only" flag: an admin can delete or change seeded items (such as "Normal" in "General status"). No built-in page depends on them, but once your own business page reads one, a deleted value shows as a grey raw value.
 - A label is one piece of Chinese text in the database; the English UI translates it by that text through the language pack: translated if the pack has that exact text, not translated if an admin typed it.

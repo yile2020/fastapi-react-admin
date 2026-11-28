@@ -285,4 +285,30 @@ export const flows = {
       caption: 'Enabling and disabling on the page apply at once; installing, uninstalling or editing plugin.toml needs a backend restart',
     },
   },
+  /**
+   * plugin/config/service（写入走 check_dynamic_int_bounds / DYNAMIC_CHOICES，提交后清缓存）→
+   * utils/dynamic_config.py 的 load_*（组总开关 <组>_CONFIG_STATUS 为 0 时回落 _ENV_DEFAULTS；读到不合法的值按键回落并记 error）
+   */
+  config: {
+    zh: {
+      steps: [
+        { name: '界面保存', sub: '后端按范围校验', branch: { when: '超出范围', name: '拒绝保存', sub: '提示允许的范围' } },
+        { name: '用到时读库', sub: '不缓存旧值，不用重启' },
+        { name: '看组总开关', sub: '每组一个 _CONFIG_STATUS', branch: { when: '关着', name: '整组用 .env', sub: '库里的值不读' } },
+        { name: '逐项取值', sub: '库里的值覆盖 .env', branch: { when: '库里的值不合法', name: '这一项用 .env', sub: '记一条错误日志' } },
+      ],
+      end: { name: '新值生效', sub: '会话 / 上传只管之后的' },
+      caption: '会话策略只影响之后的登录，已登录的人按登录时的规则走完；文件上传只影响之后开始的上传',
+    },
+    en: {
+      steps: [
+        { name: 'Saved in the UI', sub: 'Range-checked by the backend', branch: { when: 'Out of range', name: 'Refused', sub: 'Message gives the range' } },
+        { name: 'Read when used', sub: 'No stale cache, no restart' },
+        { name: 'Group switch', sub: 'One _CONFIG_STATUS per group', branch: { when: 'Off', name: 'Whole group from .env', sub: 'Database values ignored' } },
+        { name: 'Per key', sub: 'Database value overrides .env', branch: { when: 'Invalid value', name: 'That key from .env', sub: 'An error is logged' } },
+      ],
+      end: { name: 'New value in effect', sub: 'Sessions / uploads: from now on' },
+      caption: 'Session policy only affects later sign-ins — people already signed in keep the rules they signed in under; upload settings only affect uploads started afterwards',
+    },
+  },
 }
