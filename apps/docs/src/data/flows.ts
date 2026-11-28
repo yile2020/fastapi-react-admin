@@ -59,4 +59,32 @@ export const flows = {
       caption: 'Files below the chunking threshold (16 MiB by default) skip the assemble step. Files queue one after another; parts of one file go in parallel',
     },
   },
+  /**
+   * plugin/notification/service/notification_service.py 的 create_in_tx（站内行 + 投递行，同一事务）→
+   * routing.resolve（系统策略 × 个人偏好 → _skip_reason）→ delivery_service（worker 抢占、退避重试、unknown 不重试）
+   */
+  notify: {
+    zh: {
+      steps: [
+        { name: '业务事务里写入', sub: '站内消息和投递行一起写', branch: { when: '事务回滚', name: '什么都不发', sub: '邮件不会先于业务到' } },
+        { name: '站内消息', sub: '铃铛实时亮起，永远发' },
+        { name: '选渠道', sub: '系统策略 × 个人偏好', branch: { when: '没开', name: '不走这条渠道', sub: '不留记录' } },
+        { name: '查收件人', sub: '账号状态 · 地址 · 手机号已验证', branch: { when: '不满足', name: '记为「跳过」', sub: '投递记录里写原因' } },
+        { name: 'worker 发送', sub: '提交后立刻踢一次，另每 15 秒扫', branch: { when: '失败', name: '退避重试 4 次', sub: '可能已发出的不重试' } },
+      ],
+      end: { name: '已发出', sub: '邮件服务器 / 厂商已受理' },
+      caption: '对每个收件人 × 每条外部渠道（邮件、短信）各走一遍；群机器人按「一条通知 × 一个机器人」一行。全员广播的类型只发站内',
+    },
+    en: {
+      steps: [
+        { name: 'Written in your transaction', sub: 'In-app row and delivery rows together', branch: { when: 'Rolled back', name: 'Nothing is sent', sub: 'No email before the change commits' } },
+        { name: 'In-app message', sub: 'The bell lights up; always sent' },
+        { name: 'Pick channels', sub: 'System policy × personal preference', branch: { when: 'Off', name: 'Channel not used', sub: 'No row recorded' } },
+        { name: 'Check recipient', sub: 'Account status · address · verified phone', branch: { when: 'Not met', name: 'Recorded as skipped', sub: 'Reason shown in delivery records' } },
+        { name: 'Worker sends', sub: 'Kicked on commit, plus a 15 s sweep', branch: { when: 'Fails', name: 'Backoff, 4 retries', sub: 'Maybe-sent results are not retried' } },
+      ],
+      end: { name: 'Sent', sub: 'Accepted by the mail server / provider' },
+      caption: 'Runs once per recipient × external channel (email, SMS); group bots get one row per notification × bot. Broadcast types are in-app only',
+    },
+  },
 }

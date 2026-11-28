@@ -7,10 +7,19 @@ sidebar:
 
 import shot from '../../../../../../../docs/screenshots/notice.png'
 import ProductShot from '../../../../components/ProductShot.astro'
+import DiagramFlow from '../../../../components/DiagramFlow.astro'
+import { flows } from '../../../../data/flows'
 
-Notifications in fastapi-react-admin have three parts: an in-app inbox (the bell in the top bar plus a Message center page, updated over Socket.IO), notices that admins publish to everyone or to chosen departments, roles and users, and a routing layer that decides, per notification kind, whether a message also goes out by email, SMS or to a Feishu, DingTalk or WeCom group bot. External sends are written as delivery rows inside the caller's database transaction and sent by a Celery worker, so a rolled-back approval never emails anyone.
+When something happens in the system (an approval reaches you, a notice is published, an export is ready), it lands in the bell in the top bar first; then, depending on the admin's and your own settings, it can also go out by email or SMS, or to a Feishu, DingTalk or WeCom group. Admins can also publish notices with attachments and a chosen audience.
+
+This page first shows how to get a notification into an inbox and the order in which the system decides whether to send it, then covers notices, group bots and common problems.
+
+<details>
+<summary>Show notices</summary>
 
 <ProductShot src={shot} alt="Notices" url="localhost:8888/plugins/notice" />
+
+</details>
 
 ## UI entry points
 
@@ -26,6 +35,26 @@ Notifications in fastapi-react-admin have three parts: an in-app inbox (the bell
 | **Profile → Notifications** | `/profile` | The user | Whether each notification type also goes by email / SMS; cells the system policy forces are locked |
 
 There is also `POST /api/v1/sys/notifications` (`sys:notification:send`) for admins to send an in-app notification by hand.
+
+## Quick start
+
+In-app messages work out of the box. Below, approval reminders are wired to email; about ten minutes:
+
+1. Under **System → Config → Email service**, fill in the SMTP server, account and password. For QQ Mail, 163 and similar this is the "authorization code" generated in the mailbox settings, not the login password.
+2. Set `NOTIFICATION_WEB_BASE_URL` in `.env` to your real address and restart the backend, or the "go to it" link in emails points at `localhost`.
+3. Have the approver bind an email under **Profile** (enter it → receive a code → bind; this step itself uses the SMTP settings from step 1). Email is on by default for approval reminders — you can see it under **Notifications → Notification policy**.
+4. From another account start an approval request, open it under "My requests" and click remind.
+5. Open **Notifications → Delivery records**: if the row says *Sent*, it worked. If it says *Skipped* or *Failed*, the reason column says why — see [Troubleshooting](#no-email-arrived).
+
+## Processing order
+
+Once a notification is created, this is how the system decides who gets it and on which channels:
+
+<DiagramFlow {...flows.notify.en} />
+
+- **In-app is always sent**; only email and SMS look at the policy. The policy has four modes: off, on by default, off by default, forced. Users can change "on / off by default" under **Profile → Notifications**; "forced" is locked.
+- **"Off" leaves no row, "skipped" does**: channels switched off by policy or preference are not considered at all; channels that should have sent but couldn't (no email, unverified phone, disabled account) get a *Skipped* row you can find in delivery records.
+- **Master switch**: turning off `NOTIFICATION_EXTERNAL_ENABLED` in System → Config leaves only in-app messages; anything already queued still goes out.
 
 ## Real-time inbox
 
@@ -124,6 +153,52 @@ The less obvious leak was httpx itself: at INFO level it logs `HTTP Request: POS
 | DingTalk, WeCom bots | not yet posted to a real group; signing and error codes follow the docs and fake servers |
 | SMS plugin | Aliyun sent for real on 2026-10-24 (a verification-code template); Tencent Cloud not yet, covered by contract tests that run the real SDK against a local fake server |
 | Email and SMS through the router | the sending layer is faked in tests; for email, the 5xx-permanent / 4xx-retry split follows aiosmtplib's exception hierarchy, not real server replies |
+
+## Troubleshooting
+
+### No email arrived
+
+Open **Notifications → Delivery records**, find the row for the recipient and check its status:
+
+| Status / reason | What to do |
+|---|---|
+| No row at all | The channel is off: check the email column for this kind under **Notification policy** (off / off by default), whether the user turned it off under **Profile → Notifications**, and the external-channel master switch in System → Config |
+| Skipped · *No address (email / phone)* | The recipient has no email; once added, later notifications are sent (skipped rows can't be resent) |
+| Failed · *Rejected by mail server* / *Channel misconfigured* | Check the SMTP account, authorization code, port and SSL match (port 465 needs SSL on) |
+| Failed, will retry · *Network unreachable* | The backend cannot reach the mail server; it retries after 1 min, 5 min, 30 min and 2 h |
+| Sent | The mail server accepted it — check the recipient's spam folder |
+
+Rows stuck at *Pending* usually mean the Celery worker is not running: it does the sending.
+
+### SMS not sent
+
+Symptom: the delivery row says *Skipped · Phone not verified by its owner*.
+
+Cause: numbers entered or imported by an admin never get SMS — one wrong digit and an approval title lands on a stranger's phone.
+
+Fix: have the user bind their phone under **Profile** (receive a code, then bind); it then shows *Verified*.
+
+### Saving a group bot fails
+
+Symptom: `NOTIFICATION_ENCRYPT_SECRET_KEY is not configured, so group bot webhook URLs cannot be stored safely`
+
+Fix: generate a key with `openssl rand -hex 32`, put it in `NOTIFICATION_ENCRYPT_SECRET_KEY` in `apps/api/backend/.env`, restart the backend and save again. A webhook URL is a credential for posting into the group, so it is never stored in plain text.
+
+When the URL is malformed, the message names the right prefix — a Feishu URL must start with `https://open.feishu.cn/open-apis/bot/v2/hook/`. Copy the whole URL from the group settings, including the token at the end.
+
+### Group misses a notice
+
+Either the bot isn't subscribed to notices, or the notice **has an audience set**. A bot posts to the whole group and can't respect an audience, so restricted notices are not pushed; if the audience is later widened to everyone, it is pushed then.
+
+### Someone can't see a notice
+
+Invisible notices always answer "not found". The usual reasons: the scheduled publish time hasn't come, it has expired, the person is outside the audience (departments include sub-departments, roles count only when enabled), or the notice is hidden. Holders of `sys:notice:add` can see in the read statistics who in the audience has and hasn't read it.
+
+### Resend is refused
+
+Symptom: `Only failed or unknown deliveries can be resent (skipped ones lack an address; add it first)`
+
+A skipped row was never actually sent. After adding the address, the next notification goes out normally; this one is not re-sent.
 
 ## Limitations
 
