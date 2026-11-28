@@ -87,4 +87,33 @@ export const flows = {
       caption: 'Runs once per recipient × external channel (email, SMS); group bots get one row per notification × bot. Broadcast types are in-app only',
     },
   },
+  /**
+   * common/security/rbac.py 的 rbac_verify（超管放行 · 角色 / 菜单 · 非 GET 要 is_staff · 权限码）→
+   * permission.py 的 filter_data_permission_for_user（超管 / 有角色关过滤 → 不过滤；开了过滤没规则 → 一行不给；规则读不懂 → false()）
+   * → data_scope.py 的 DataScopedCRUD 在 select / select_model / count 上拼条件
+   */
+  dataScope: {
+    zh: {
+      steps: [
+        { name: '登录校验', sub: '解出当前用户' },
+        { name: '功能权限', sub: '接口要求的权限码', branch: { when: '没有', name: '403', sub: '这一步就拦下' } },
+        { name: '要不要过滤', sub: '超管 · 有角色关了过滤', branch: { when: '是', name: '不过滤', sub: '看到全部行', tone: 'ok' as const } },
+        { name: '收集规则', sub: '所有启用角色 × 启用范围', branch: { when: '一条都没有', name: '一行都看不到', sub: '开了过滤就得配规则' } },
+        { name: '编译成条件', sub: 'AND 求交，再和 OR 求并', branch: { when: '有规则读不懂', name: '一行都看不到', sub: '宁可收紧也不放开' } },
+      ],
+      end: { name: '返回范围内的行', sub: '列表 · 详情 · 计数都套上' },
+      caption: '前两步按接口判，后三步按查询判：同一个人调同一个接口，查用户表和查部门表套上的条件可以不一样',
+    },
+    en: {
+      steps: [
+        { name: 'Sign-in check', sub: 'Resolve the current user' },
+        { name: 'Function permission', sub: 'The code the API requires', branch: { when: 'Missing', name: '403', sub: 'Stopped right here' } },
+        { name: 'Filter at all?', sub: 'Superuser · a role with filtering off', branch: { when: 'Yes', name: 'No filter', sub: 'Every row', tone: 'ok' as const } },
+        { name: 'Collect rules', sub: 'All enabled roles × enabled scopes', branch: { when: 'None', name: 'No rows at all', sub: 'Filtering on needs rules' } },
+        { name: 'Compile', sub: 'AND rules intersect, then union with OR', branch: { when: 'A rule is invalid', name: 'No rows at all', sub: 'Fails closed, never open' } },
+      ],
+      end: { name: 'Rows in scope', sub: 'Lists, details and counts' },
+      caption: 'The first two steps are per API, the last three per query: the same person on the same API can get different conditions on users and on departments',
+    },
+  },
 }
