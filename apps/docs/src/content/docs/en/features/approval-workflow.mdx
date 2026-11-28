@@ -7,10 +7,19 @@ sidebar:
 
 import shot from '../../../../../../../docs/screenshots/workflow-designer.png'
 import ProductShot from '../../../../components/ProductShot.astro'
+import DiagramFlow from '../../../../components/DiagramFlow.astro'
+import { flows } from '../../../../data/flows'
 
-fastapi-react-admin ships an approval workflow plugin (`plugin/workflow`): an admin designs a form and a flow tree in the browser, publishes it, and any signed-in user can submit requests against it. Approvers work from one **Approval center** (to approve / handled / my requests / CC'd to me), and every action — approve, reject, transfer, CC, send back, take back, add approvers, remind, withdraw, terminate, reassign — is checked by the same server-side function (`capabilities()`) that tells the UI which buttons to show, so the buttons and the API cannot drift apart.
+An admin designs a form and a flow in the browser and publishes it; from then on every signed-in user can submit requests against it, and approvers handle everything from one place, the **Approval center**. Provided by the workflow plugin (`plugin/workflow`), which depends on the notification plugin.
+
+This page first walks through building a first workflow and the order a request goes through, then covers approvers, actions, timeouts and common problems. Connecting your own business tables and the source code come last.
+
+<details>
+<summary>Show the flow designer</summary>
 
 <ProductShot src={shot} alt="Workflow definitions: form designer and flow tree" url="localhost:8888/workflow/definition" />
+
+</details>
 
 ## UI entry points
 
@@ -24,6 +33,26 @@ fastapi-react-admin ships an approval workflow plugin (`plugin/workflow`): an ad
 | Dashboard cards "Waiting on me", "My requests" and "Quick start" · bell in the top bar | — | Every signed-in user | Tasks, CCs, reminders and results all go to the message center (the workflow plugin depends on the `notification` plugin) |
 
 The approval center only requires a sign-in, not a permission code: approvers are often outside the request's data scope, and gating it by menu permission or data scope would stop people from opening their own tasks. What each person may see and do on each request is decided per request by the server's `capabilities()`.
+
+## Quick start
+
+Walk through the seeded sample workflow "请假" (leave), about five minutes:
+
+1. Sign in as an admin, open **Approvals → Workflow definitions** and open "请假" in the designer (basic info → form → flow). Creating a new workflow needs `workflow:definition:add`.
+2. In the flow tab, click the "直属主管" (direct manager) node and check its approver rule and **When no approver is found**. That setting decides what happens when a department has no manager — see [below](#rejected-right-after-submitting).
+3. Click publish. Validation only runs on publish and lists every problem; saving a draft does not validate.
+4. Switch to a regular account, open **Approvals → Approval center** and start a "请假" request. Under the form, **Approval flow** previews who the request will go to. If a step says no approver was found, don't submit yet — go back to step 2.
+5. Sign in as the approver shown in the preview and approve it under "To approve". The initiator's bell gets an "Approved" notification.
+
+## Processing order
+
+A request goes through these steps from submission to the end. A rejection at any step ends the whole request immediately:
+
+<DiagramFlow {...flows.approval.en} />
+
+- **A missing approver never passes silently**: each approval node has **When no approver is found** with three choices — reject (the default), skip, or send to admin. The initiator is always removed from the result, so "the department manager is the initiator" also counts as no approver.
+- **Any / all / in-sequence only change when a step counts as done**. Rejection works the same in all three: one rejection rejects the whole request.
+- **Sending back is not rejecting**: the request goes back to the initiator or an earlier node and stays open. Once that step is handled it continues from there (or jumps straight back to the sender, if "come back to me" was ticked).
 
 ## Workflow definitions
 
@@ -102,15 +131,60 @@ If Celery beat is not running, or the seeded `workflow.handle_timeouts` entry un
 
 Each node sets `hidden` / `readonly` / `editable` per field (start node defaults to editable, approval nodes to read-only). This is enforced on the server: the detail API removes hidden fields from the schema, the data and the before/after values in the history. Hidden values are also kept out of list summaries, branch records ("took the large-amount branch" reveals the amount range) and the path preview; publishing a condition on a hidden field gives a `CONDITION_VAR_HIDDEN` warning.
 
-## Concurrent actions
+<span id="concurrent-actions"></span>
 
-Every state change first claims the request with `UPDATE wf_instance SET version = version + 1 WHERE id = ? AND version = ? AND status = 'running'` and retries the whole transaction up to 3 times. Each action carries an idempotency key, replayed only for the same user. Rejected actions are still recorded, in a separate transaction.
+<details>
+<summary>What happens when two people click at once (concurrency)</summary>
+
+Every state change first claims the request with `UPDATE wf_instance SET version = version + 1 WHERE id = ? AND version = ? AND status = 'running'` and retries the whole transaction up to 3 times. Each action carries an idempotency key, replayed only for the same user. Rejected actions are still recorded, in a separate transaction. Whether a button shows up and whether the API accepts the action come from the same server function (`capabilities()`), so they cannot disagree.
+
+</details>
 
 ## Connecting business tables
 
 Form approvals need no code. For a business table, implement `WorkflowBizHandler` in [`handler.py`](https://github.com/yile2020/fastapi-react-admin/blob/main/apps/api/backend/plugin/workflow/handler.py), call `register_handler()`, and start the request with `runtime_service.start_for_biz()` inside your own transaction. `on_finished` runs inside the approval transaction and should only update business state. Five webhook events (`workflow.instance.started` / `approved` / `rejected` / `withdrawn` / `terminated`) are available through the [open API](/en/features/open-api/) and deliberately omit form contents. Approval notifications are routed like any other kind — see [Notifications](/en/features/notifications/).
 
 The plugin also has optional AI features (pre-review, generating a definition from one sentence, filling the form from a document, approving from chat, and data-gated auto-approval on or-sign nodes); see [AI assistant](/en/features/ai-assistant/).
+
+## Troubleshooting
+
+### Rejected right after submitting
+
+Symptom: `No approver found for "直属主管", rejected automatically`
+
+Cause: the approval node's rule found nobody, and **When no approver is found** is set to reject (the default). The usual reasons: neither the initiator's department nor its parents have a manager; the role has no members (or only the initiator); the manager's account is disabled.
+
+Fix:
+
+1. Set a manager for the department in **System → Departments**, or add people to the role.
+2. For nodes that should not block on a missing approver, switch **When no approver is found** to send to admin or skip in the designer, then publish.
+3. Check the **Approval flow** preview before submitting: the step without an approver says `No approver found; the request will be rejected automatically`.
+
+### Timeouts never fire
+
+Symptom: a node is set to auto-approve after 24 hours, and the request is still sitting there days later.
+
+Cause: timeouts are handled by the scheduled task `workflow.handle_timeouts`, every 5 minutes. If Celery beat is not running, or the task is disabled under **Scheduler → Tasks**, the setting still saves but never fires.
+
+Fix: make sure the beat process is running (`pnpm dev` starts it; for production see [Scheduler](/en/features/scheduler/)), then check the task is enabled. Two cases are not faults: if someone is handling the request at that moment it waits for the next run, and auto-approve falls back to a reminder while a required editable field is still empty.
+
+### Cannot delete a workflow
+
+Symptom: `This workflow already has approvals and cannot be deleted; disable it instead`
+
+Fix: disable it. No new requests can be started; open requests finish normally (they use a snapshot of the flow taken when they were submitted).
+
+### Reminder refused
+
+Symptom: `You can only send a reminder once every 5 minutes`
+
+Fix: wait five minutes. The limit is per request, so you can still remind on other requests.
+
+### Transfer refused
+
+Symptom: `That person is already an approver of this step` or `Cannot transfer to the initiator`
+
+Cause: the person is already an approver of this step in the current round (including one who already approved), so a transfer would give them two votes; and an initiator cannot approve their own request.
 
 ## Limitations
 
@@ -147,3 +221,5 @@ The notes record which tests were mutation-checked (fix reverted, test turns red
 ## Try the demo
 
 Sign in at [fra.wubunan.com](https://fra.wubunan.com/sign-in) with `admin` / `123456`. **Approvals → Workflow definitions** opens the designer (Basics → Form → Workflow designer) with the seeded "请假" leave sample, **Approvals → Approval center** is where requests are submitted and handled, and **Approvals → Instance monitor** has terminate, reassign and handover.
+
+The demo is shared: please don't publish or disable the sample "请假" workflow or terminate other people's requests. To try the designer, create a new workflow.

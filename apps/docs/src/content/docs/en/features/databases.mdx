@@ -5,7 +5,12 @@ sidebar:
   order: 8
 ---
 
+import DiagramFlow from '../../../../components/DiagramFlow.astro'
+import { flows } from '../../../../data/flows'
+
 The backend runs on PostgreSQL, SQL Server or MySQL with the same models, the same Alembic migration chain and a seed file for each dialect. You choose one with `DATABASE_TYPE` in `apps/api/backend/.env`; PostgreSQL is the default. The backend is a fork of [fastapi-best-architecture](https://github.com/fastapi-practices/fastapi_best_architecture) (FBA), which supports PostgreSQL and MySQL. SQL Server support was added in this fork, upstream declined to merge it, and so the fork is permanent.
+
+This page first lists support for the three databases and how to switch, then the gates between editing the config and signing in, then the SQL Server / MySQL adaptations and common problems.
 
 ## Supported databases
 
@@ -47,6 +52,12 @@ Set `DATABASE_TYPE='mysql'` and `DATABASE_PORT=3306`, point the host and user at
 Keep `DATABASE_PK_MODE='snowflake'`. All three seed files exist only in the snowflake-ID form. With `autoincrement`, `fba init` finds no seed file and skips it without an error, so you end up with tables but no `admin` account. Also note that `pnpm db:init` drops and recreates the database.
 :::
 
+## From config to sign-in
+
+Whichever database you switch to, it goes in this order:
+
+<DiagramFlow {...flows.database.en} />
+
 ## SQL Server adaptations
 
 None of these problems show up on PostgreSQL, which is the local default. Only the `pytest · SQL Server` CI job catches them.
@@ -69,6 +80,42 @@ The connection URL uses `mssql+aioodbc` with `LongAsMax=Yes` so `NVARCHAR(MAX)` 
 - **PostgreSQL** aborts the whole transaction after one failed statement, so "try it, ignore if already applied" steps run inside a SAVEPOINT. On SQL Server, rolling back that SAVEPOINT fails, so the same step uses a plain `suppress`. `_tolerate_already_applied()` in the `c0000000comments` migration handles both. The PostgreSQL CI job runs `alembic upgrade c0000000comments` on an empty database to exercise that branch.
 - **MySQL** `DATETIME` defaults to whole seconds. Recycle-bin restore finds the attachment links of "the same delete" by an equal `deleted_time`. At one-second precision, links removed by hand in that same second were re-attached too (issue #132). `TimeZone` now maps to `DATETIME(6)` on MySQL, and migration `q0000000mysqldt` upgrades existing columns. `MODIFY` redefines a whole column and would silently drop `NOT NULL` and comments, so the migration reads both from `information_schema` and writes them back.
 - **Data migrations** never use dialect-specific upserts (`MERGE` / `ON CONFLICT` / `INSERT IGNORE`). They check for a row by business key (`sys_menu.name`, `sys_role.code`) before inserting. Seed IDs differ between dialects (PostgreSQL roles start at `4000000000000000…`, the other two at `3000000000000000…`).
+
+## Troubleshooting
+
+### SQL Server driver not found
+
+Symptom: `Can't open lib ... ODBC Driver 18`
+
+Cause: the backend uses `aioodbc`, which needs the ODBC driver on the **host**; the one inside the container doesn't count.
+
+Fix: install Microsoft ODBC Driver 18 on the machine running the backend, and check `DATABASE_DRIVER` matches the name `odbcinst -q -d` lists.
+
+### No admin after init
+
+Cause: `DATABASE_PK_MODE` isn't `snowflake`. Seed data exists only in snowflake-ID form for all three databases, and when the file isn't found `fba init` **skips it silently**.
+
+Fix: set `DATABASE_PK_MODE='snowflake'` back and run `pnpm db:init` again (it drops and recreates the database).
+
+### Production refuses to start
+
+Symptom: the startup log says the migration version doesn't equal head and to run `alembic upgrade head` first, or that there's no `alembic_version` table (these messages are Chinese-only).
+
+Fix: run migrations first (`pnpm db:upgrade`; in production the `migrate` container does it), then start the API. For a database created by `create_all` and never stamped, `alembic stamp` it as the message says, then upgrade.
+
+### Chinese text becomes question marks
+
+Cause: the column is `VARCHAR`, which SQL Server stores by code page. Columns holding Chinese must use `UniversalStr` / `UniversalText` (`NVARCHAR`).
+
+### Inserts fail with 544
+
+Cause: on SQL Server a migration created the snowflake primary key as `IDENTITY`. Primary keys must use `id_key` (explicit `autoincrement=False`); a guard test scans migration files.
+
+### sqlcmd seeding fails with 1934
+
+Cause: tables have filtered unique indexes, which need `QUOTED_IDENTIFIER ON`.
+
+Fix: add `-I` to `sqlcmd`.
 
 ## Migrations
 

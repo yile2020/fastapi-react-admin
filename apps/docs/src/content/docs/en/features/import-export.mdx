@@ -7,10 +7,19 @@ sidebar:
 
 import shot from '../../../../../../../docs/screenshots/dept-import.png'
 import ProductShot from '../../../../components/ProductShot.astro'
+import DiagramFlow from '../../../../components/DiagramFlow.astro'
+import { flows } from '../../../../data/flows'
 
-Export happens on the server: click **Export** in a list page's toolbar and an xlsx / csv is built from the **current filters** or the **selected rows**, limited by the same data scope as the list. Up to 5,000 rows download straight away; larger exports become background jobs that send an in-app message when done, and the file stays under **Profile → Exports** for 72 hours. Import is three steps: download a template with dropdowns → upload and **preview** (nothing is written; every row's problems are listed) → commit. Users, departments and dictionary items can be imported, and a whole department tree can come from one file, even with children listed before their parents.
+Click **Export** on a list page and the rows you **currently have filtered** or **have ticked** are saved as xlsx / csv; large exports move to the background and you get an in-app message when they're ready. Users, departments and dictionary items can be imported in bulk: download the template, fill it in, upload — the system **previews first** and tells you what's wrong row by row, and writes only once you confirm. One file can build a whole department tree.
 
-<ProductShot src={shot} alt="Department import: the preview before committing" url="localhost:8888/system/dept" />
+This page first walks through a department import, then the steps an import goes through and how each can be refused, then export details and common problems.
+
+<details>
+<summary>Show the import preview</summary>
+
+<ProductShot src={shot} alt="Department import: preview before committing" url="localhost:8888/system/dept" />
+
+</details>
 
 ## UI entry points
 
@@ -24,6 +33,24 @@ Export happens on the server: click **Export** in a list page's toolbar and an x
 | **Profile → Exports** | Any signed-in user, own records only | — |
 
 The seed data grants **none of these import / export buttons to any non-superuser role**; tick them under Roles for the roles that need them. Business-data lists support row selection and exporting the selection; audit logs are read-only and export by filter only; tree lists have no multi-select.
+
+## Quick start
+
+Build two levels of departments from one file, about five minutes:
+
+1. Open **System → Departments**, click **Import** and **Download template** in the drawer.
+2. Fill three rows on the first sheet (columns *Department code · Department name · Parent department code*): `SALES` · Sales · `HQ`; `SALES_N` · North · `SALES`; `SALES_S` · South · `SALES`. A parent row may come after its children.
+3. Upload the file in the drawer. All three rows say *Will create* — nothing is in the database yet. Put a non-existent parent code on one row and it is flagged with `Parent department XXX does not exist, or you are not allowed to add departments under it`.
+4. Commit; "Sales" and its two groups appear in the department tree.
+5. Click **Export** on the same page — the exported file can be edited and imported straight back.
+
+## Import processing order
+
+<DiagramFlow {...flows.dataImport.en} />
+
+- **File-level and row-level errors are separate**: wrong format, too large or missing required columns refuse the whole file; a bad row only flags that row.
+- **Preview writes nothing; commit checks again**: someone may change data after your preview, so commit decides create vs update against the latest state.
+- **By default the good rows go in**: bad rows are skipped and the rest are written. For "one error and nothing is written", tick **Import only if every row succeeds** before committing.
 
 ## Export options and files
 
@@ -89,6 +116,54 @@ When rows fail you can download an **error report**: the original cells plus "ro
 ## Importing a department tree
 
 Each row has its own department code and a **parent department code** (`parent_code`). The parent can be an existing department the importer can see, or **another row in the same file**, in any order: rows are written top-down by depth at commit. Cycles are checked against the tree as it will be after the import, so moving A under B and B out of A in the same file is not mistaken for a cycle, while a real cycle is reported. If a parent row has an error, the rows under it are flagged too.
+
+## Troubleshooting
+
+### Whole file refused
+
+| Message | Fix |
+|---|---|
+| `Only xlsx is supported, got xls` | *Save as* `.xlsx` in Excel; csv is not accepted either |
+| `The header row is missing required columns: …` | Don't delete required template columns; restore renamed headers (field, Chinese and English names are all recognised) |
+| `At most 1000 rows per import, please split the file` | Split it and import in batches |
+| `The file is corrupted or not a valid xlsx, re-save it with Excel and try again` | Open it in Excel and save again |
+
+### Row flagged in preview
+
+The usual ones:
+
+| Message | Fix |
+|---|---|
+| `Formulas are not supported, paste as values before uploading` | The cell is a formula; paste it as a value |
+| `Parent department XXX does not exist, or you are not allowed to add departments under it` | The parent code is misspelled, or that department is outside your data scope |
+| `XXX already exists (mode is "create only")` | Switch to create-and-update, or drop the row |
+| `Number exceeds the precise range, format the column as text and re-enter it` | Format long-number columns (ID numbers, snowflake IDs) as text first |
+
+### Token invalid on commit
+
+Symptom: `The import token has expired, upload the file again to preview`
+
+Cause: more than 30 minutes passed since the preview, or this preview was already committed. Upload the file again.
+
+### User import is off
+
+Symptom: `No import default password is configured (USER_IMPORT_DEFAULT_PASSWORD), bulk import is off`
+
+Fix: set `USER_IMPORT_DEFAULT_PASSWORD` in `.env` (it must pass the password rules) and restart the backend. Imported users sign in with it. User import is superuser-only and create-only.
+
+### Export refused
+
+| Message | Fix |
+|---|---|
+| `N rows match, which exceeds the per-export limit of 200000. Narrow the filters and try again` | Export in several filtered batches; nothing is truncated, so you never get a file that looks complete but isn't |
+| `You already have 3 exports in progress. Wait for them to finish before starting another` | Wait under **Profile → Exports** |
+| `The background task queue is unavailable and this export could not be queued. Please try again later` | Over 5000 rows goes to the background; it can't queue without a Celery worker |
+
+### Export file is gone
+
+Symptom: `This file was deleted after its retention period. Please export again`
+
+Export files are kept for 72 hours and their records for 90 days. Export again.
 
 ## Settings
 

@@ -5,8 +5,12 @@ description: View active devices, force a session to sign out, and set idle time
 
 import online from '../../../../../../../docs/screenshots/online.png'
 import ProductShot from '../../../../components/ProductShot.astro'
+import DiagramFlow from '../../../../components/DiagramFlow.astro'
+import { flows } from '../../../../data/flows'
 
-Every sign-in creates a server-side session. Use this page to see who is signed in, end a session and understand when a sign-in expires.
+Every sign-in creates a session on the server: you can see who is signed in on which device, how long they've been idle and how long the session has left, and end it at any time. Web, desktop and mobile each have their own lifetimes and device limits, set in Config.
+
+This page first covers viewing and ending a session, then where a session can end on its way from sign-in and what the user sees, then common problems.
 
 ## Viewing and ending sessions
 
@@ -24,6 +28,12 @@ Every sign-in creates a server-side session. Use this page to see who is signed 
 <ProductShot src={online} alt="Active sessions: user, device, live connection and time left" url="localhost:8888/monitor/online" />
 
 </details>
+
+## Session lifecycle
+
+A session can end at any of these points between sign-in and sign-out:
+
+<DiagramFlow {...flows.session.en} />
 
 ## Timeouts and device limits
 
@@ -68,6 +78,32 @@ The access token lasts 30 minutes and is renewed with the refresh token, which i
 </details>
 
 Session operations use Lua scripts for a single Redis instance. Redis Cluster has not been tested.
+
+## Troubleshooting
+
+### Signed out every half hour
+
+Usually the renewal cookie isn't being stored: the site is plain http but `.env` sets `COOKIE_SECURE=true` (browsers only keep Secure cookies over https), or a proxy in front terminates https and rewrites `X-Forwarded-Proto` to `http`. The default (empty) follows whether the request is https, which suits most deployments; on https production sites set it to `true` explicitly.
+
+### Device limit reached
+
+Symptom: `This account has reached its device limit on the web (1); sign out on another device first`
+
+Cause: Config → Session policy sets a session limit for this client, with the over-limit action set to refuse new sign-ins.
+
+Fix: sign out on another device, or have an admin end the old session under Active sessions; or switch the over-limit action back to signing out the longest-idle session.
+
+### Phone sign-in drops the other
+
+The mobile session limit defaults to 1: signing in on a second phone signs the first one out with `Your account signed in on another device, so this device was signed out`. Raise the mobile limit under Session policy to allow more.
+
+### Kicked user's page unchanged
+
+If their page has no live connection (offline, or the browser suspended it in the background), it returns to sign-in on their next request, showing `You were signed out by an administrator, please sign in again`. The session is already gone on the server, so no request after that succeeds.
+
+### Admins can't see sessions
+
+Listing sessions and forcing sign-out are superuser-only; granting the Active sessions menu to a role is not enough.
 
 ## Try the demo
 

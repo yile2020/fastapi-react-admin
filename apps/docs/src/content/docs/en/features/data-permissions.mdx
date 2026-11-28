@@ -7,10 +7,19 @@ sidebar:
 
 import shot from '../../../../../../../docs/screenshots/data-permission.png'
 import ProductShot from '../../../../components/ProductShot.astro'
+import DiagramFlow from '../../../../components/DiagramFlow.astro'
+import { flows } from '../../../../data/flows'
 
-fastapi-react-admin has two independent permission layers. **RBAC** decides whether a user may open a page, see a button or call an endpoint (permission codes such as `sys:user:list`). **Data scopes** decide which rows that endpoint returns: a role's rules are compiled into a SQLAlchemy `WHERE` condition that the DAO layer appends to every read, so on the same Users list a department manager can be limited to their own department.
+Permissions come in two layers that don't replace each other: **function permissions** decide which pages, buttons and APIs a person can use; **data scopes** decide which rows those APIs return — two people can both open Users, and the department manager only sees their own department while head office sees everyone. Data scopes are applied automatically when the backend queries, so business code doesn't write a single check for them.
+
+This page first walks through "own department only" with the seed data, then covers the order a request is judged in and how rules are written, and ends with common problems and what developers need to watch for.
+
+<details>
+<summary>Show the data permissions page</summary>
 
 <ProductShot src={shot} alt="Data permissions: scopes and rules" url="localhost:8888/system/data-permission" />
+
+</details>
 
 ## UI entry points
 
@@ -19,7 +28,26 @@ fastapi-react-admin has two independent permission layers. **RBAC** decides whet
 | **System → Data permissions** | `/system/data-permission` | Scopes: `data:scope:list` · `add` · `edit` · `del`, changing which rules a scope holds `data:scope:rule:edit`; rules: `data:rule:list` · `add` · `edit` · `del` | Data scopes on the left, the rules of the selected scope on the right |
 | **System → Roles → Data scopes** | `/system/role` | View `sys:role:list`, change `sys:role:scope:edit` | Bind data scopes to a role; the role form also has an **Enable data-scope filtering** switch, and off means the role is not limited by data scopes (for a head-office role, say) |
 
-⚠️ Opening the Data permissions page currently requires `data:scope:add` in the frontend route guard, not `data:scope:list`, so a role granted only "query" cannot open it.
+Opening the Data permissions page requires `data:scope:list`.
+
+## Quick start
+
+Use the seeded "财务专员" (finance staff) role, which is bound to the "本部门数据权限" (own department) scope, and its user Wang Fang; about five minutes:
+
+1. Sign in as an admin, open **System → Roles** and select "财务专员". The **Data scope** tab shows it is bound to "本部门数据权限", and **Enable data-scope filtering** is on in the role form.
+2. In the **Permissions** tab, tick **System → Users** and its "query" button, then save. This is the function permission: without it Wang Fang can't open Users at all.
+3. In a private window sign in as `wangfang` / `123456` and open **System → Users**: only people in "财务人事中心" (finance & HR) are listed.
+4. Back in the admin window, change or unbind the scope under **System → Data permissions**; Wang Fang sees the change after refreshing the page — no new sign-in needed.
+
+## Processing order
+
+Every request is judged in this order. The first two steps decide whether the API may be called; the last three decide which rows come back:
+
+<DiagramFlow {...flows.dataScope.en} />
+
+- **Several roles: the widest wins.** If any enabled role has filtering turned off, no other role's limits are looked at. Adding a role adds abilities — and can remove limits.
+- **A rule only affects tables that have its column.** "Department ID equals my department" becomes `dept_id = <yours>` on users; the department table has no `dept_id` column, so the rule does nothing there and the department list stays complete.
+- **OR lifts AND.** All rules are flattened, then combined as "(all AND rules) or (any OR rule)". When one scope mixes both, the data permissions page shows a warning.
 
 ## RBAC vs data scope
 
@@ -71,6 +99,9 @@ On the `User` model this becomes `sys_user.dept_id = <current user's dept_id>`. 
 3. Collect the rules of every enabled scope of every enabled role into one set. Filtering on but no rules → the user sees **nothing**.
 4. Compile each rule that applies to the queried model, then combine:
 
+<details>
+<summary>The combining code (developers)</summary>
+
 ```python
 where_list = []
 if where_and_list:
@@ -79,6 +110,8 @@ if where_or_list:
     where_list.append(or_(*where_or_list))
 return or_(*where_list) if where_list else or_(1 == 1)
 ```
+
+</details>
 
 The final `or_(1 == 1)` only covers rules that are valid but target other models — a rule on `User` does not hide departments.
 
@@ -121,6 +154,54 @@ Earlier versions skipped rules they could not apply. The seed's own "本部门�
 ## Applying permission changes
 
 No. The user's permission snapshot (Redis key `fba:user:<id>`) is cleared when roles, scopes or rules change, and the next request rebuilds it. Both the backend suite and the browser tests check this without a re-login.
+
+## Troubleshooting
+
+### Scope set, still sees everything
+
+Check in this order:
+
+1. Is the person a superuser? Superusers are never filtered.
+2. Does **any** of their roles have **Enable data-scope filtering** off (an admin role left attached, for example)?
+3. Does the rule land on this table? A rule for model `Dept` does nothing to the user list; with a column template like `__dept_id__`, the table must really have that column.
+4. Is there an OR rule among them? It lifts all AND limits.
+
+### No rows at all
+
+Usual causes:
+
+- The role has filtering on but no data scope bound — filtering with no rules means no rows.
+- The user has no department and the rule uses `${dept_id}`: a rule whose value can't be resolved matches nothing.
+- A rule can't be understood (its column was dropped, say): the whole filter closes to no rows, rather than opening up.
+
+### Page shows access denied
+
+Symptom: the page redirects to *Access denied*, or the API returns 403.
+
+Cause: a missing function permission, unrelated to data scopes. Tick the page and its "query" button under **System → Roles → Permissions**.
+
+If the API answers with one of these, the account itself is the problem:
+
+| Message | Cause |
+|---|---|
+| `The role assigned to this account is disabled, please contact the administrator` | No enabled role (all disabled, or none assigned) |
+| `No menu assigned to this account, please contact the administrator` | None of the roles has any menu ticked |
+| `This account is not allowed to perform admin operations, please contact the administrator` | The user's admin-operations switch is off: reads work, creates, updates and deletes are refused |
+
+### Saving a rule is refused
+
+Rules are validated on save, and the message says what's wrong:
+
+| Message | Fix |
+|---|---|
+| `The selected model has no such column` | Pick a column the table really has |
+| `When the model is "all models", the column must be a template variable` | "All models" only takes column templates like `__dept_id__` / `__created_by__` |
+| `This column is not allowed for data filtering` | `id`, `sort`, `deleted` and the created / updated times can't be used |
+| `Value does not match the column type` | Text in a numeric column, for example; ID columns take a number or `${dept_id}` |
+
+### When changes take effect
+
+Immediately. Changing a role, scope or rule clears the affected users' permission cache on the backend; after a page refresh they get the new buttons and data. No new sign-in.
 
 ## Limitations
 
