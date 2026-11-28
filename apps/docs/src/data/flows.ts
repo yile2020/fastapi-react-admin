@@ -172,4 +172,31 @@ export const flows = {
       caption: 'The error report is your file plus "row" and "reason" columns — fix it and import it again',
     },
   },
+  /** plugin/open/gateway/auth.py 模块头的八步检查（顺序与代码一致）；先验签后消费 nonce */
+  openApi: {
+    zh: {
+      steps: [
+        { name: '请求头', sub: 'AK · 时间戳 · nonce · 签名', branch: { when: '缺', name: '400', sub: '列出缺哪几个' } },
+        { name: '认应用', sub: 'AK 有效 · 启用 · 未过期', branch: { when: '不对', name: '401', sub: 'AK 无效 / 停用 / 过期' } },
+        { name: 'IP 白名单', sub: '留空 = 不限', branch: { when: '不在', name: '403', sub: '回带看到的 IP' } },
+        { name: '时间与签名', sub: '±300 秒 · HMAC-SHA256', branch: { when: '对不上', name: '401', sub: '回带服务端拼的待签名串' } },
+        { name: '防重放', sub: 'nonce 600 秒内不能再用', branch: { when: '用过', name: '401', sub: '疑似重放' } },
+        { name: '授权与限流', sub: 'scope · 每分钟次数', branch: { when: '超出', name: '403 / 429', sub: '429 带 Retry-After' } },
+      ],
+      end: { name: '返回数据', sub: '成功失败都记调用日志' },
+      caption: '签名不对的请求不占用 nonce：修好签名后用同一个 nonce 重发，不会被当成重放',
+    },
+    en: {
+      steps: [
+        { name: 'Headers', sub: 'AK · timestamp · nonce · sign', branch: { when: 'Missing', name: '400', sub: 'Lists which ones' } },
+        { name: 'App', sub: 'AK valid · enabled · not expired', branch: { when: 'Bad', name: '401', sub: 'Invalid / disabled / expired' } },
+        { name: 'IP allowlist', sub: 'Empty = any', branch: { when: 'Not listed', name: '403', sub: 'Echoes the IP seen' } },
+        { name: 'Time & signature', sub: '±300 s · HMAC-SHA256', branch: { when: 'Mismatch', name: '401', sub: "Echoes the server's string to sign" } },
+        { name: 'Replay', sub: 'A nonce lives 600 s', branch: { when: 'Reused', name: '401', sub: 'Looks like a replay' } },
+        { name: 'Scope & rate', sub: 'Granted scope · per-minute limit', branch: { when: 'Exceeded', name: '403 / 429', sub: '429 has Retry-After' } },
+      ],
+      end: { name: 'Data returned', sub: 'Every call is logged' },
+      caption: 'A request with a bad signature does not burn its nonce: fix the signature and resend with the same nonce, and it is not treated as a replay',
+    },
+  },
 }
