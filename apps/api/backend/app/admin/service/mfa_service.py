@@ -342,6 +342,17 @@ class MfaService:
             raise errors.RequestError(msg=t('error.mfa.invalid_code'))
         return row
 
+    async def verify_if_enabled(self, db: AsyncSession, user: Any, otp: str | None) -> None:
+        """
+        已登录时的敏感操作（如添加通行密钥）要本人再确认一次：开了二次验证的就要动态码或恢复码，没开的直接过。
+        用掉的时间片 / 恢复码会被记下，调用方要在事务里调（`CurrentSessionTransaction`）
+        """
+        row = await _row(db, user.id)
+        if row is None:
+            return
+        if not otp or not _check_code(row, otp):
+            raise errors.RequestError(msg=t('error.mfa.invalid_code'))
+
     async def disable(self, db: AsyncSession, user: Any, otp: str) -> None:
         """自己关：要动态码（或恢复码）；被策略强制的人不能关 —— 关了下次登录又被逼着绑，等于白折腾一圈"""
         if is_enforced(user):

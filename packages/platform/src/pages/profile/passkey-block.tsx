@@ -12,7 +12,15 @@ import { Skeleton } from '@admin/ui/components/skeleton'
 import { passkeyEnabledQuery, passkeyErrorMessage, passkeySupported } from '../../auth/passkey'
 import { ConfirmDialog } from '../../shell/confirm-dialog'
 import { StatusPill } from '../_shared/status'
-import { passkeysQuery, useAddPasskey, useDeletePasskey, useRenamePasskey, type Passkey } from './api'
+import {
+  mfaStatusQuery,
+  passkeysQuery,
+  passwordStatusQuery,
+  useAddPasskey,
+  useDeletePasskey,
+  useRenamePasskey,
+  type Passkey,
+} from './api'
 
 /**
  * 个人中心「安全」里的通行密钥：添加 · 改名 · 删除。登录页那一侧在 `apps/web/src/routes/_guest/-passkey-sign-in.tsx`。
@@ -28,6 +36,11 @@ export function PasskeyBlock() {
   const rename = useRenamePasskey()
   const del = useDeletePasskey()
   const [name, setName] = React.useState('')
+  // 添加前本人再确认一次（#457 评审）：有密码的输当前密码，开了二次验证的再输动态码
+  const pwd = useQuery(passwordStatusQuery)
+  const mfa = useQuery(mfaStatusQuery)
+  const [password, setPassword] = React.useState('')
+  const [otp, setOtp] = React.useState('')
   const [error, setError] = React.useState<string | null>(null)
   const [editing, setEditing] = React.useState<{ id: string; name: string } | null>(null)
   const [pendingDelete, setPendingDelete] = React.useState<Passkey | null>(null)
@@ -41,8 +54,10 @@ export function PasskeyBlock() {
     e.preventDefault()
     setError(null)
     try {
-      await add.mutateAsync(name.trim() || t('我的设备'))
+      await add.mutateAsync({ name: name.trim() || t('我的设备'), password, otp })
       setName('')
+      setPassword('')
+      setOtp('')
     } catch (err) {
       setError(passkeyErrorMessage(err, t))
     }
@@ -139,17 +154,46 @@ export function PasskeyBlock() {
       ) : null}
 
       {canAdd ? (
-        <form onSubmit={onAdd} className="flex max-w-md gap-2">
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            maxLength={64}
-            placeholder={t('起个名字，比如「我的手机」')}
-            data-testid="passkey-name-input"
-          />
-          <Button type="submit" disabled={add.isPending} data-testid="passkey-add">
-            {t('添加通行密钥')}
-          </Button>
+        <form onSubmit={onAdd} className="flex max-w-md flex-col gap-2">
+          <p className="text-sm text-muted-foreground">
+            {pwd.data && !pwd.data.has_password
+              ? t('这个账号还没有密码：先在上面「设置密码」里用第三方账号验证身份，再来添加。')
+              : t('添加前要再确认一次是你本人。')}
+          </p>
+          {pwd.data?.has_password ? (
+            <Input
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              maxLength={128}
+              placeholder={t('当前密码')}
+              data-testid="passkey-password-input"
+            />
+          ) : null}
+          {mfa.data?.enabled ? (
+            <Input
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value)}
+              maxLength={32}
+              placeholder={t('动态码或恢复码')}
+              data-testid="passkey-otp-input"
+            />
+          ) : null}
+          <div className="flex gap-2">
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={64}
+              placeholder={t('起个名字，比如「我的手机」')}
+              data-testid="passkey-name-input"
+            />
+            <Button type="submit" disabled={add.isPending} data-testid="passkey-add">
+              {t('添加通行密钥')}
+            </Button>
+          </div>
         </form>
       ) : null}
 

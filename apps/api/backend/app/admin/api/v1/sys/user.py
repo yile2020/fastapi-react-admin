@@ -15,7 +15,12 @@ from backend.app.admin.schema.data_import import (
 from backend.app.admin.schema.export_job import GetExportJobDetail, StartExportParam
 from backend.app.admin.schema.login_log import GetLoginLogDetail
 from backend.app.admin.schema.mfa import GetMfaStatus, MfaOtpParam, MfaRecoveryCodes, MfaSetupInfo
-from backend.app.admin.schema.passkey import GetPasskeyDetail, PasskeyNameParam, PasskeyRegisterParam
+from backend.app.admin.schema.passkey import (
+    GetPasskeyDetail,
+    PasskeyNameParam,
+    PasskeyReauthParam,
+    PasskeyRegisterParam,
+)
 from backend.app.admin.schema.role import GetRoleDetail
 from backend.app.admin.schema.user import (
     AddUserParam,
@@ -498,12 +503,19 @@ async def get_my_passkeys(db: CurrentSession, request: Request) -> ResponseSchem
 
 @router.post(
     '/me/passkeys/options',
-    summary='添加通行密钥：取注册挑战',
-    description='`options` 原样交给浏览器的 PublicKeyCredential.parseCreationOptionsFromJSON()',
+    summary='添加通行密钥：本人再确认一次，取注册挑战',
+    description=(
+        '有密码的要当前密码，开了二次验证的再要动态码；没有密码的账号要先用第三方账号验证身份。'
+        '`options` 原样交给浏览器的 PublicKeyCredential.parseCreationOptionsFromJSON()'
+    ),
     dependencies=[DependsJwtAuth, Depends(RateLimiter(Rate(10, Duration.MINUTE)))],
 )
-async def passkey_registration_options(db: CurrentSession, request: Request) -> ResponseSchemaModel[dict[str, Any]]:
-    return response_base.success(data=await passkey_service.registration_options(db, request.user))
+async def passkey_registration_options(
+    db: CurrentSessionTransaction, request: Request, obj: PasskeyReauthParam
+) -> ResponseSchemaModel[dict[str, Any]]:
+    session_uuid = jwt_decode(get_token(request)).session_uuid
+    data = await passkey_service.registration_options(db, request.user, session_uuid, obj)
+    return response_base.success(data=data)
 
 
 @router.post(

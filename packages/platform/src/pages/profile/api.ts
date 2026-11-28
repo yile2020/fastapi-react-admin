@@ -379,13 +379,19 @@ export const passkeysQuery = queryOptions({
   queryFn: () => api.GET<Passkey[]>('/api/v1/sys/users/me/passkeys'),
 })
 
-/** 添加一把：取注册挑战 → 浏览器弹指纹 / 面容 / PIN → 交注册结果。浏览器那一步的错原样抛（`passkeyErrorMessage` 翻译） */
+/**
+ * 添加一把：本人再确认一次（当前密码 / 动态码）并取注册挑战 → 浏览器弹指纹 / 面容 / PIN → 交注册结果。
+ * 浏览器那一步的错原样抛（`passkeyErrorMessage` 翻译）。
+ * 🔴 字段名 `password` / `otp` 是后端操作日志打码清单里的键，别改名（#457 评审：不再确认的话，泄露的 token 就能添上别人的认证器）
+ */
 export function useAddPasskey() {
   const qc = useQueryClient()
   return useMutation({
     meta: { suppressErrorToast: true },
-    mutationFn: async (name: string) => {
-      const options = await api.POST<Record<string, unknown>>('/api/v1/sys/users/me/passkeys/options')
+    mutationFn: async ({ name, password, otp }: { name: string; password?: string; otp?: string }) => {
+      const options = await api.POST<Record<string, unknown>>('/api/v1/sys/users/me/passkeys/options', {
+        body: { password: password || null, otp: otp || null },
+      })
       const credential = await createPasskeyCredential(options)
       return api.POST<Passkey>('/api/v1/sys/users/me/passkeys', { body: { name, credential } })
     },

@@ -152,6 +152,8 @@ error:
     disabled: 系统没有开启通行密钥登录（管理员要先配置 PASSKEY_RP_ID 和 PASSKEY_ORIGINS）
     invalid: 通行密钥无效，请换一把或用密码登录
     not_found: 通行密钥不存在
+    reauth_failed: 当前密码不对，通行密钥没有添加
+    reauth_required: 这个账号还没有密码：先在个人中心「设置密码」里用第三方账号验证身份，再来添加通行密钥
     register_failed: 通行密钥没能添加，请重试（要用当前网站的地址打开页面，并完成指纹 / 面容 / PIN 验证）
     too_many: 最多只能添加 {max} 把通行密钥，请先删掉不用的
   notice:
