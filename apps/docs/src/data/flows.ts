@@ -311,4 +311,32 @@ export const flows = {
       caption: 'Session policy only affects later sign-ins — people already signed in keep the rules they signed in under; upload settings only affect uploads started afterwards',
     },
   },
+  /**
+   * common/security/session.py：登录准入（按端的上限，挤掉最久没活跃的 / 拒绝）→ 每个请求 check（已结束带原因 401）
+   * → 空闲按 X-Client-Idle 推算的最后活跃判 → refresh 轮换（30 秒宽限回放、期外判 reuse 撤销整个会话）→ 绝对到期
+   */
+  session: {
+    zh: {
+      steps: [
+        { name: '登录', sub: '建会话，查这一端的上限', branch: { when: '满了', name: '挤掉最久没活跃的', sub: '或按设置拒绝新登录' } },
+        { name: '每个请求', sub: '核对会话还在不在', branch: { when: '已结束', name: '回到登录页', sub: '显示被踢的原因' } },
+        { name: '空闲检查', sub: '按人有没有在操作算', branch: { when: '超过空闲时长', name: '自动退出', sub: '后台轮询不算操作' } },
+        { name: '续期', sub: 'access 30 分钟，refresh 每次换新', branch: { when: '旧 refresh 30 秒后再用', name: '整个会话作废', sub: '疑似凭据被盗' } },
+        { name: '最长登录', sub: '从登录那一刻算', branch: { when: '到期', name: '要求重新登录', sub: '一直在用也不延长' } },
+      ],
+      end: { name: '继续使用', sub: '在线用户页可见' },
+      caption: '管理员强制下线、改密码、停用账号随时结束会话；有实时连接的页面当场回到登录页',
+    },
+    en: {
+      steps: [
+        { name: 'Sign in', sub: "Session created; this client's limit checked", branch: { when: 'Full', name: 'Oldest idle one out', sub: 'Or refuse, if so configured' } },
+        { name: 'Every request', sub: 'Is the session still there?', branch: { when: 'Ended', name: 'Back to sign-in', sub: 'With the reason' } },
+        { name: 'Idle check', sub: 'Counts human activity', branch: { when: 'Idle too long', name: 'Signed out', sub: "Background polling doesn't count" } },
+        { name: 'Renewal', sub: 'Access 30 min; refresh rotates', branch: { when: 'Old refresh reused after 30 s', name: 'Session revoked', sub: 'Possible stolen token' } },
+        { name: 'Max lifetime', sub: 'Counted from sign-in', branch: { when: 'Reached', name: 'Sign in again', sub: 'Activity never extends it' } },
+      ],
+      end: { name: 'Carry on', sub: 'Visible under Online users' },
+      caption: 'Admin sign-outs, password changes and disabled accounts end sessions at any time; pages with a live connection return to sign-in immediately',
+    },
+  },
 }
