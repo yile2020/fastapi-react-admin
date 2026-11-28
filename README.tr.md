@@ -21,6 +21,8 @@ Satır düzeyinde izinler · durumunu koruyan çoklu sekme · onay iş akışı 
 
 </div>
 
+> Not: Bu, topluluk tarafından sürdürülen bir Türkçe çeviridir; temel kaynak [İngilizce README](README.md) dosyasıdır.
+
 > 🚀 Demo hesabı `admin` / `123456` — herkesin giriş yapabileceği herkese açık bir örnektir; veriler diğer ziyaretçiler tarafından değiştirilebilir veya silinebilir, bu nedenle gerçek bir bilgi saklamayın.
 
 <table>
