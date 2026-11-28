@@ -472,4 +472,32 @@ export const flows = {
       caption: 'Read-only tools skip the preview and confirm steps; the MCP gateway takes the same path, and its writes must be confirmed on the web by the person being represented',
     },
   },
+  /**
+   * pnpm db:init（cli.py：按 DATABASE_TYPE 删库重建 → create_all → 灌 sql/<方言>/init_<PK_MODE>*.sql，找不到种子静默跳过 → alembic stamp head）
+   * → 启动时 core/registrar.py 的 _verify_production_database（prod：没有 alembic_version 或版本 ≠ head 拒绝启动）
+   */
+  database: {
+    zh: {
+      steps: [
+        { name: '改 .env', sub: 'DATABASE_TYPE 选库' },
+        { name: '连上数据库', sub: '按方言拼连接串', branch: { when: 'SQL Server 缺驱动', name: '连不上', sub: '宿主机要装 ODBC 18' } },
+        { name: 'pnpm db:init', sub: '删库重建 · 按模型建表', branch: { when: '主键模式不是雪花', name: '没有种子数据', sub: '表在，admin 账号不在' } },
+        { name: '灌种子、标版本', sub: '对应方言的初始数据，stamp head' },
+        { name: '启动后端', sub: '生产环境核对迁移版本', branch: { when: '库不在 head', name: '拒绝启动', sub: '先跑 alembic upgrade head' } },
+      ],
+      end: { name: '可以登录', sub: 'admin / init 时让你设的密码' },
+      caption: '已经在跑的库升级时不用 db:init（它会删库），用 pnpm db:upgrade 跑迁移',
+    },
+    en: {
+      steps: [
+        { name: 'Edit .env', sub: 'DATABASE_TYPE picks the database' },
+        { name: 'Connect', sub: 'Dialect-specific connection string', branch: { when: 'SQL Server lacks driver', name: "Can't connect", sub: 'Install ODBC 18 on the host' } },
+        { name: 'pnpm db:init', sub: 'Drops and recreates · tables from models', branch: { when: 'PK mode not snowflake', name: 'No seed data', sub: 'Tables exist, admin does not' } },
+        { name: 'Seed & stamp', sub: "That dialect's seed data, stamp head" },
+        { name: 'Start backend', sub: 'Production checks the migration version', branch: { when: 'Not at head', name: 'Refuses to start', sub: 'Run alembic upgrade head first' } },
+      ],
+      end: { name: 'Sign in', sub: 'admin / the password set during init' },
+      caption: "To upgrade a running database don't use db:init (it drops the database) — run pnpm db:upgrade",
+    },
+  },
 }
